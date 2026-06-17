@@ -160,6 +160,27 @@ shares, stake / unstake, sub-accounts, and approve-integrator. Float `amount`
 arguments are scaled by the asset's ticker scale (see
 `lighter::constants::ticker_scale`).
 
+### Human-unit orders (market-metadata cache)
+
+Order `price` / `base_amount` are integer ticks. To trade in human units, the
+client caches each market's decimals from `orderBookDetails` and converts for
+you (`ticks = round(human × 10^decimals)`):
+
+```rust
+client.refresh_markets().await?; // optional warm-up; otherwise fetched lazily
+
+// 1.5 ETH @ $1234.56, good-till-time:
+let (order, _resp) = client
+    .create_limit_order(0, 1, 1.5, 1234.56, false, GOOD_TILL_TIME, false, &TradeOpts::default())
+    .await?;
+
+// or convert explicitly
+let price_ticks = client.price_to_ticks(0, 1234.56).await?;
+let size_ticks = client.size_to_ticks(0, 1.5).await?;
+```
+
+`create_market_order_value` is the IOC-market equivalent in human units.
+
 ### Ethereum L1 signing (`eth` feature)
 
 `transfer`, `change_pub_key`, and `approve_integrator` require an L1

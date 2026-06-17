@@ -9,6 +9,7 @@
 //! 10-minute transaction lifetime, leverage→IMF conversion, …).
 
 use std::collections::HashMap;
+use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::attributes::TxAttributes;
@@ -19,7 +20,7 @@ use crate::constants::{
 };
 use crate::error::{Error, Result};
 use crate::hash::{bytes_to_field_elems, fp5_to_le_bytes, hash_to_fp5};
-use crate::models::{OrderBookOrders, RespSendTx, RespSendTxBatch};
+use crate::models::{OrderBookDetail, OrderBookOrders, RespSendTx, RespSendTxBatch};
 use crate::nonce::{NonceManager, NonceStrategy};
 use crate::rest::RestClient;
 use crate::signer::KeyManager;
@@ -93,6 +94,55 @@ impl Default for OrderParams {
     }
 }
 
+/// Per-market scaling metadata, derived from `orderBookDetails`.
+///
+/// Lets callers work in human prices/sizes: the protocol's integer tick values
+/// are `round(human × 10^decimals)`.
+#[derive(Debug, Clone)]
+pub struct MarketConfig {
+    pub market_id: i16,
+    pub symbol: String,
+    pub market_type: String,
+    pub price_decimals: i64,
+    pub size_decimals: i64,
+    pub min_base_amount: String,
+    pub min_quote_amount: String,
+}
+
+impl MarketConfig {
+    fn from_detail(d: &OrderBookDetail) -> Self {
+        MarketConfig {
+            market_id: d.market_id as i16,
+            symbol: d.symbol.clone(),
+            market_type: d.market_type.clone(),
+            price_decimals: d.price_decimals,
+            size_decimals: d.size_decimals,
+            min_base_amount: d.min_base_amount.clone(),
+            min_quote_amount: d.min_quote_amount.clone(),
+        }
+    }
+
+    /// Converts a human price to integer price ticks.
+    pub fn price_to_ticks(&self, price: f64) -> u32 {
+        (price * 10f64.powi(self.price_decimals as i32)).round() as u32
+    }
+
+    /// Converts a human base size to integer base-amount ticks.
+    pub fn size_to_ticks(&self, size: f64) -> i64 {
+        (size * 10f64.powi(self.size_decimals as i32)).round() as i64
+    }
+
+    /// Converts integer price ticks back to a human price.
+    pub fn ticks_to_price(&self, ticks: u64) -> f64 {
+        ticks as f64 / 10f64.powi(self.price_decimals as i32)
+    }
+
+    /// Converts integer base ticks back to a human size.
+    pub fn ticks_to_size(&self, ticks: u64) -> f64 {
+        ticks as f64 / 10f64.powi(self.size_decimals as i32)
+    }
+}
+
 /// A high-level, cloneable-by-`Arc` trading client.
 pub struct TradingClient {
     rest: RestClient,
@@ -100,6 +150,7 @@ pub struct TradingClient {
     chain_id: u32,
     signers: HashMap<u8, KeyManager>,
     nonce_manager: NonceManager,
+    markets: RwLock<HashMap<i16, MarketConfig>>,
 }
 
 impl TradingClient {
@@ -139,6 +190,7 @@ impl TradingClient {
             chain_id,
             signers,
             nonce_manager,
+            markets: RwLock::new(HashMap::new()),
         })
     }
 
@@ -191,6 +243,122 @@ impl TradingClient {
             attributes: params.attributes.to_map(),
         };
         self.sign_and_send(tx, api_key_index, opts.price_protection).await
+    }
+
+    // --- market metadata & human-unit helpers --------------------------------
+
+    /// Returns the cached [`MarketConfig`] for `market_index`, fetching it from
+    /// `orderBookDetails` on first use.
+    pub async fn market_config(&self, market_index: i16) -> Result<MarketConfig> {
+        if let Some(cfg) = self.markets.read().unwrap().get(&market_index).cloned() {
+            return Ok(cfg);
+        }
+        let details = self.rest.order_book_details(Some(market_index)).await?;
+        let mut found = None;
+        {
+            let mut cache = self.markets.write().unwrap();
+            for d in details
+                .order_book_details
+                .iter()
+                .chain(details.spot_order_book_details.iter())
+            {
+                let cfg = MarketConfig::from_detail(d);
+                if cfg.market_id == market_index {
+                    found = Some(cfg.clone());
+                }
+                cache.insert(cfg.market_id, cfg);
+            }
+        }
+        found.ok_or(Error::InvalidMarketIndex)
+    }
+
+    /// Fetches and caches metadata for every market (one `orderBookDetails`
+    /// call). Call once up front to avoid per-market lookups.
+    pub async fn refresh_markets(&self) -> Result<()> {
+        let details = self.rest.order_book_details(None).await?;
+        let mut cache = self.markets.write().unwrap();
+        cache.clear();
+        for d in details
+            .order_book_details
+            .iter()
+            .chain(details.spot_order_book_details.iter())
+        {
+            let cfg = MarketConfig::from_detail(d);
+            cache.insert(cfg.market_id, cfg);
+        }
+        Ok(())
+    }
+
+    /// Converts a human price to integer price ticks for `market_index`.
+    pub async fn price_to_ticks(&self, market_index: i16, price: f64) -> Result<u32> {
+        Ok(self.market_config(market_index).await?.price_to_ticks(price))
+    }
+
+    /// Converts a human base size to integer base-amount ticks.
+    pub async fn size_to_ticks(&self, market_index: i16, size: f64) -> Result<i64> {
+        Ok(self.market_config(market_index).await?.size_to_ticks(size))
+    }
+
+    /// Limit order specified in human price/size units (auto-scaled to ticks via
+    /// the market's decimals).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_limit_order(
+        &self,
+        market_index: i16,
+        client_order_index: i64,
+        size: f64,
+        price: f64,
+        is_ask: bool,
+        time_in_force: u8,
+        reduce_only: bool,
+        opts: &TradeOpts,
+    ) -> Result<(CreateOrder, RespSendTx)> {
+        let cfg = self.market_config(market_index).await?;
+        self.create_order(
+            OrderParams {
+                market_index,
+                client_order_index,
+                base_amount: cfg.size_to_ticks(size),
+                price: cfg.price_to_ticks(price),
+                is_ask,
+                order_type: LIMIT_ORDER,
+                time_in_force,
+                reduce_only,
+                order_expiry: DEFAULT_28_DAY_ORDER_EXPIRY,
+                ..Default::default()
+            },
+            opts,
+        )
+        .await
+    }
+
+    /// IOC market order specified in human price/size units. `avg_price` caps
+    /// the worst acceptable fill (auto-scaled to ticks via the market's
+    /// decimals).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_market_order_value(
+        &self,
+        market_index: i16,
+        client_order_index: i64,
+        size: f64,
+        avg_price: f64,
+        is_ask: bool,
+        reduce_only: bool,
+        opts: &TradeOpts,
+    ) -> Result<(CreateOrder, RespSendTx)> {
+        let cfg = self.market_config(market_index).await?;
+        self.create_order(
+            market_order_params(
+                market_index,
+                client_order_index,
+                cfg.size_to_ticks(size),
+                cfg.price_to_ticks(avg_price),
+                is_ask,
+                reduce_only,
+            ),
+            opts,
+        )
+        .await
     }
 
     /// Convenience: an IOC market order at `avg_execution_price`.
@@ -1551,6 +1719,23 @@ mod tests {
         assert_eq!(scale_amount(ASSET_ID_USDC, 1.5).unwrap(), 1_500_000);
         assert_eq!(scale_amount(ASSET_ID_ETH, 1.0).unwrap(), 100_000_000);
         assert!(matches!(scale_amount(99, 1.0), Err(Error::UnsupportedAsset(99))));
+    }
+
+    #[test]
+    fn market_config_scales_human_units() {
+        let cfg = MarketConfig {
+            market_id: 0,
+            symbol: "ETH".to_string(),
+            market_type: "perps".to_string(),
+            price_decimals: 2,
+            size_decimals: 4,
+            min_base_amount: "0".to_string(),
+            min_quote_amount: "0".to_string(),
+        };
+        assert_eq!(cfg.price_to_ticks(1234.56), 123_456);
+        assert_eq!(cfg.size_to_ticks(1.5), 15_000);
+        assert!((cfg.ticks_to_price(123_456) - 1234.56).abs() < 1e-9);
+        assert!((cfg.ticks_to_size(15_000) - 1.5).abs() < 1e-9);
     }
 
     #[test]
