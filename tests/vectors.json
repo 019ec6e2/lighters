@@ -1,0 +1,131 @@
+[
+  {
+    "name": "create_order",
+    "tx_type": 14,
+    "hash": "df8102da5ffa45e0b14a4fffdcab19d21d52039ba9036396f3a3c11c21145baaebece4f51e983629",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"MarketIndex\":0,\"ClientOrderIndex\":1,\"BaseAmount\":1000,\"Price\":50000,\"IsAsk\":0,\"Type\":0,\"TimeInForce\":1,\"ReduceOnly\":0,\"TriggerPrice\":0,\"OrderExpiry\":99999999,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "create_order_attrs",
+    "tx_type": 14,
+    "hash": "68ef56e5fcc4e9e02267d148a056ab3bc13143ece29c634cbdc47db12323eef383a24c55a2531e2f",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"MarketIndex\":0,\"ClientOrderIndex\":1,\"BaseAmount\":1000,\"Price\":50000,\"IsAsk\":0,\"Type\":0,\"TimeInForce\":1,\"ReduceOnly\":0,\"TriggerPrice\":0,\"OrderExpiry\":99999999,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":{\"1\":7,\"2\":100,\"3\":50}}"
+  },
+  {
+    "name": "create_grouped_orders",
+    "tx_type": 28,
+    "hash": "1f6fa2337ca545642170ca65781f886603ec7798aa6c856c4e3bfe71b47adf16878aca6669e9f1b4",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"GroupingType\":1,\"Orders\":[{\"MarketIndex\":0,\"ClientOrderIndex\":0,\"BaseAmount\":1000,\"Price\":50000,\"IsAsk\":0,\"Type\":0,\"TimeInForce\":1,\"ReduceOnly\":0,\"TriggerPrice\":0,\"OrderExpiry\":604800000},{\"MarketIndex\":0,\"ClientOrderIndex\":0,\"BaseAmount\":0,\"Price\":51000,\"IsAsk\":1,\"Type\":4,\"TimeInForce\":0,\"ReduceOnly\":1,\"TriggerPrice\":49000,\"OrderExpiry\":604800000}],\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "cancel_order",
+    "tx_type": 15,
+    "hash": "1c570f5f891b3d3fc3b5a9af97c3ab7d4b3e7ec5aa6537afc2cd614406010ebfc5ec4b46ccc21963",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"MarketIndex\":0,\"Index\":12345,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "cancel_all_orders_skip",
+    "tx_type": 16,
+    "hash": "1d728f9a41f99316e3ea2fa2645afb216b140605aa59836a2a445dd2b657566d99029780df30614a",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"TimeInForce\":0,\"Time\":0,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":{\"4\":1}}"
+  },
+  {
+    "name": "modify_order",
+    "tx_type": 17,
+    "hash": "219cc7f4ac176d8242200b3cb0a3472f70eb5a168e12f7543f506f091830febd02e88d1cd3e19f84",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"MarketIndex\":0,\"Index\":12345,\"BaseAmount\":2000,\"Price\":50000,\"TriggerPrice\":0,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "change_pub_key",
+    "tx_type": 8,
+    "hash": "46d5143ddb0a8f28febbc8628683ee046d9503a891b68ab926a421756cfc4932d15de0c33e20a11a",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"PubKey\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\",\"L1Sig\":\"\",\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}",
+    "msg": "Register Lighter Account\n\npubkey: 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000\nnonce: 0x000000000000002a\naccount index: 0x0000000000000001\napi key index: 0x0000000000000000\nOnly sign this message for a trusted client!"
+  },
+  {
+    "name": "create_sub_account",
+    "tx_type": 9,
+    "hash": "5b247ef7aad88a3350d26143468c09db3cd22d560952e6c371026610e8c6dff7dd288d073fd69014",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "transfer",
+    "tx_type": 12,
+    "hash": "3895db86f382acc4f90e740d817fc2f9c38e723fb3b675bf42e5bc2009d905e87c3df9c9c7be560f",
+    "json": "{\"FromAccountIndex\":1,\"ApiKeyIndex\":0,\"ToAccountIndex\":2,\"AssetIndex\":1,\"FromRouteType\":0,\"ToRouteType\":0,\"Amount\":1234567890123,\"USDCFee\":1000,\"Memo\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32],\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L1Sig\":\"\",\"L2TxAttributes\":null}",
+    "msg": "Transfer\n\nnonce: 0x000000000000002a\nfrom: 0x0000000000000001 (route 0x0000000000000000)\napi key: 0x0000000000000000\nto: 0x0000000000000002 (route 0x0000000000000000)\nasset: 0x0000000000000001\namount: 0x0000011f71fb04cb\nfee: 0x00000000000003e8\nchainId: 0x0000000000000130\nmemo: 0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20\nOnly sign this message for a trusted client!"
+  },
+  {
+    "name": "withdraw",
+    "tx_type": 13,
+    "hash": "e8227d4d99e3472bc53cd87168d6be145d136e8be9dae1ab01422782d038997544ce24e131306a85",
+    "json": "{\"FromAccountIndex\":1,\"ApiKeyIndex\":0,\"AssetIndex\":1,\"RouteType\":0,\"Amount\":9876543210,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "update_leverage",
+    "tx_type": 20,
+    "hash": "ad78f568261808220730a7bf48952708ce9d2d61bdce72fa017bcf38e2aa048c3baead192117b9a5",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"MarketIndex\":0,\"InitialMarginFraction\":100,\"MarginMode\":0,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "update_margin",
+    "tx_type": 29,
+    "hash": "38a43356e7ee9eb0f94ec111d241437b6bbb0a652c430decf24e4e09b3b3146b976d5fafe12a3bbe",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"MarketIndex\":0,\"USDCAmount\":5000000,\"Direction\":1,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "update_account_config",
+    "tx_type": 41,
+    "hash": "528905c50873162b584068eb23adbea2b51b4cbca1ce4e16c5da5ac2f180d3f8cb57b975bd1efaca",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"AccountTradingMode\":1,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "update_account_asset_config",
+    "tx_type": 42,
+    "hash": "3a99980067d65a1b3d6aa51ff085676835736b178e6297993089f9e60a1442c4334c0782dc4ec4db",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"AssetIndex\":1,\"AssetMarginMode\":1,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "approve_integrator",
+    "tx_type": 45,
+    "hash": "8c3bd0fdf5a67d39139c423332cf0991947493ec52db7723f87d12642a4cfc2a630294d001d83717",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"IntegratorAccountIndex\":5,\"MaxPerpsTakerFee\":1000,\"MaxPerpsMakerFee\":500,\"MaxSpotTakerFee\":800,\"MaxSpotMakerFee\":400,\"ApprovalExpiry\":1800000000000,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L1Sig\":\"\",\"L2TxAttributes\":null}",
+    "msg": "Approve Integrator\n\nnonce: 0x000000000000002a\naccount index: 0x0000000000000001\napi key index: 0x0000000000000000\nintegrator account index: 0x0000000000000005\nmax perps taker fee: 0x00000000000003e8\nmax perps maker fee: 0x00000000000001f4\nmax spot taker fee: 0x0000000000000320\nmax spot maker fee: 0x0000000000000190\napproval expiry: 0x000001a3185c5000\nchainId: 0x0000000000000130\nOnly sign this message for a trusted client!"
+  },
+  {
+    "name": "create_public_pool",
+    "tx_type": 10,
+    "hash": "1e31636750036f624c2e4d8b705f3894fb23cebc6315a219cd3154e84206784845a8597a42758995",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"OperatorFee\":1000,\"InitialTotalShares\":1000000,\"MinOperatorShareRate\":5000,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "update_public_pool",
+    "tx_type": 11,
+    "hash": "15203d6532aa8bc7b46b218924546d2c12169e6f27cf6690998e63fb94f39dd549719403a053383a",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"PublicPoolIndex\":100,\"Status\":1,\"OperatorFee\":1000,\"MinOperatorShareRate\":5000,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "mint_shares",
+    "tx_type": 18,
+    "hash": "1962f0ffb1cdaab946db070576c7bde448b8f2b6fcd0aa9395dff94857393dd938ebbee00de42a09",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"PublicPoolIndex\":140737488355328,\"ShareAmount\":1000,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "burn_shares",
+    "tx_type": 19,
+    "hash": "ef3ca3844c62e3198e3178213f02e7e9a1f0ebc2f8df659d9124f806e2ebddf1063060a449e63431",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"PublicPoolIndex\":140737488355328,\"ShareAmount\":1000,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "stake_assets",
+    "tx_type": 35,
+    "hash": "07ac4d74b74c416b5ce42430ad8c58f5ff5c42401108cc6e2b0d7fcaaee68a2b6b3936c169e07526",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"StakingPoolIndex\":140737488355328,\"ShareAmount\":1000,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  },
+  {
+    "name": "unstake_assets",
+    "tx_type": 36,
+    "hash": "7182e24b0f7a357738cae698c3ab44d6d2a441f14be3c71597bc6fb995dfd19b2a4d92cb01741be6",
+    "json": "{\"AccountIndex\":1,\"ApiKeyIndex\":0,\"StakingPoolIndex\":140737488355328,\"ShareAmount\":1000,\"ExpiredAt\":1700000000000,\"Nonce\":42,\"Sig\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk8=\",\"L2TxAttributes\":null}"
+  }
+]
