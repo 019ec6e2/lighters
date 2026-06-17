@@ -56,9 +56,9 @@ pub struct WsOrder {
 /// The (incrementally maintained) state of one side-pair of an order book.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct OrderBookState {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_vec")]
     pub asks: Vec<WsOrder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_vec")]
     pub bids: Vec<WsOrder>,
 }
 
@@ -322,7 +322,7 @@ pub struct AccountUpdate {
     pub account: i64,
     #[serde(default)]
     pub channel: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_map")]
     pub assets: HashMap<String, WsAsset>,
     #[serde(default, deserialize_with = "de_lenient_map")]
     pub positions: HashMap<String, WsPosition>,
@@ -531,10 +531,13 @@ impl WsClient {
                 self.send_pong().await?;
                 Ok(None)
             }
-            "subscribed/order_book" => Ok(Some(self.handle_order_book(&value, true)?)),
-            "update/order_book" => Ok(Some(self.handle_order_book(&value, false)?)),
-            "subscribed/account_all" => Ok(Some(self.handle_account(value, true)?)),
-            "update/account_all" => Ok(Some(self.handle_account(value, false)?)),
+            // A single malformed/edge data frame must not tear down the stream:
+            // skip it (return None) rather than letting the parse error bubble
+            // out of `next_event` and terminate the connection.
+            "subscribed/order_book" => Ok(skip_on_err(self.handle_order_book(&value, true))),
+            "update/order_book" => Ok(skip_on_err(self.handle_order_book(&value, false))),
+            "subscribed/account_all" => Ok(skip_on_err(self.handle_account(value, true))),
+            "update/account_all" => Ok(skip_on_err(self.handle_account(value, false))),
             _ => Ok(None),
         }
     }
@@ -608,8 +611,12 @@ impl WsClient {
 
     fn handle_order_book(&mut self, value: &Value, snapshot: bool) -> Result<WsEvent> {
         let market_id = channel_id(value);
+        // Treat a present-but-null `order_book` the same as an absent one: the
+        // server occasionally sends `"order_book": null`, and `serde(default)`
+        // only covers the absent (key-missing) case, not an explicit null.
         let incoming: OrderBookState = value
             .get("order_book")
+            .filter(|v| !v.is_null())
             .cloned()
             .map(serde_json::from_value)
             .transpose()?
@@ -642,6 +649,14 @@ impl WsClient {
             update: Box::new(update),
         })
     }
+}
+
+/// Downgrades a per-frame handler error into a skipped frame: one malformed or
+/// edge-case data frame shouldn't drop the whole connection. Returns `None` so
+/// `next_event` keeps reading, mirroring how `handle_text` already silently
+/// skips frames whose outer JSON fails to parse.
+fn skip_on_err(result: Result<WsEvent>) -> Option<WsEvent> {
+    result.ok()
 }
 
 /// Doubles `current` backoff, capped at `max`.
@@ -861,6 +876,50 @@ mod tests {
         // is_maker_ask=false and we are the ask → we are the taker, selling.
         assert!(!fills[0].is_maker && !fills[0].is_buy);
         assert_eq!(update.shares.len(), 1);
+    }
+
+    #[test]
+    fn account_update_survives_explicit_null_collections() {
+        // The server may send a key present-but-null for an empty collection.
+        // `serde(default)` only covers the absent case, so every map/vec field
+        // must tolerate an explicit null without failing the whole parse.
+        let json = r#"{
+            "account": 5,
+            "channel": "account_all:5",
+            "assets": null,
+            "positions": null,
+            "trades": null,
+            "funding_histories": null,
+            "shares": null,
+            "type": "update/account_all"
+        }"#;
+        let update = parse_account(json);
+        assert_eq!(update.account, 5);
+        assert!(update.assets.is_empty());
+        assert!(update.positions.is_empty());
+        assert!(update.trades.is_empty());
+        assert!(update.funding_histories.is_empty());
+        assert!(update.shares.is_empty());
+    }
+
+    #[test]
+    fn order_book_state_survives_explicit_null_sides() {
+        // `"asks": null` / `"bids": null` must deserialize to empty, not error
+        // with "invalid type: null, expected a sequence".
+        let book: OrderBookState =
+            serde_json::from_str(r#"{"asks": null, "bids": null}"#).unwrap();
+        assert!(book.asks.is_empty());
+        assert!(book.bids.is_empty());
+    }
+
+    #[test]
+    fn skip_on_err_drops_errors_but_passes_events() {
+        assert!(skip_on_err(Err(Error::MissingField("x"))).is_none());
+        let ev = WsEvent::OrderBook {
+            market_id: "1".to_string(),
+            book: OrderBookState::default(),
+        };
+        assert!(skip_on_err(Ok(ev)).is_some());
     }
 
     #[test]
