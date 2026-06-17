@@ -54,11 +54,29 @@ pub mod constants;
 pub mod error;
 pub mod hash;
 pub mod http;
+pub mod models;
 pub mod signer;
 pub mod transactions;
 
+#[cfg(feature = "trading")]
+pub mod nonce;
+#[cfg(feature = "trading")]
+pub mod rest;
+#[cfg(feature = "trading")]
+pub mod trading;
+
 pub use attributes::TxAttributes;
-pub use client::{generate_api_key, OrderReq, TransactOpts, TxClient, DEFAULT_EXPIRE_MS};
+pub use client::{
+    generate_api_key, ApproveIntegratorReq, OrderReq, TransferReq, TransactOpts, TxClient,
+    DEFAULT_EXPIRE_MS,
+};
 pub use error::{Error, Result};
 pub use signer::KeyManager;
 pub use transactions::{SignedTransaction, TxInfo};
+
+#[cfg(feature = "trading")]
+pub use nonce::{NonceManager, NonceStrategy};
+#[cfg(feature = "trading")]
+pub use rest::RestClient;
+#[cfg(feature = "trading")]
+pub use trading::{OrderParams, TradeOpts, TradingClient};

@@ -180,13 +180,18 @@ pub(crate) fn is_perps_market(m: i16) -> bool {
     m >= MIN_PERPS_MARKET_INDEX && m <= MAX_PERPS_MARKET_INDEX
 }
 
-/// Serde helper: serialize a byte vector as Go does for `[]byte` (base64 std).
+/// Serde helper: serialize any byte sequence as Go does for `[]byte` (base64
+/// std). Works for both `Vec<u8>` signatures and fixed-size key arrays.
 pub(crate) mod b64 {
     use base64::{engine::general_purpose::STANDARD, Engine};
     use serde::Serializer;
 
-    pub fn serialize<S: Serializer>(bytes: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&STANDARD.encode(bytes))
+    pub fn serialize<T, S>(bytes: &T, s: S) -> Result<S::Ok, S::Error>
+    where
+        T: AsRef<[u8]> + ?Sized,
+        S: Serializer,
+    {
+        s.serialize_str(&STANDARD.encode(bytes.as_ref()))
     }
 }
 

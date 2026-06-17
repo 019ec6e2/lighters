@@ -85,6 +85,68 @@ println!("tx hash:  {}", order.tx_hash());
 println!("payload:  {}", order.to_json()?);
 ```
 
+## Trading (online client)
+
+The `trading` feature adds a full async runtime on top of the signer: REST
+submission (`sendTx` / `sendTxBatch`), a nonce manager, order-book reads, and
+high-level order helpers. Bring your own async runtime (e.g. tokio).
+
+```toml
+[dependencies]
+lighter = { path = "../lighter-rust", features = ["trading"] }
+tokio = { version = "1", features = ["full"] }
+```
+
+```rust
+use std::collections::HashMap;
+use lighter::{TradingClient, NonceStrategy, OrderParams, TradeOpts};
+use lighter::constants::{LIMIT_ORDER, GOOD_TILL_TIME};
+
+let mut keys = HashMap::new();
+keys.insert(0u8, "0x<40-byte-hex-private-key>".to_string());
+
+let client = TradingClient::new(
+    "https://mainnet.zklighter.elliot.ai",
+    /* account_index */ 3,
+    keys,
+    NonceStrategy::Optimistic,
+)
+.await?;
+
+// Limit order — nonce + api key resolved automatically.
+let (order, resp) = client
+    .create_order(
+        OrderParams {
+            market_index: 0,
+            client_order_index: 1,
+            base_amount: 1000,
+            price: 50_000,
+            is_ask: false,
+            order_type: LIMIT_ORDER,
+            time_in_force: GOOD_TILL_TIME,
+            ..Default::default()
+        },
+        &TradeOpts::default(),
+    )
+    .await?;
+println!("submitted {} -> {}", order.tx_hash(), resp.tx_hash);
+
+// IOC market order bounded by 1% slippage off the live book.
+let (_mkt, _resp) = client
+    .create_market_order_limited_slippage(0, 2, 500, 0.01, false, false, None, &TradeOpts::default())
+    .await?;
+```
+
+`NonceStrategy::{Optimistic, Api, NoOp}` mirror the Python nonce managers.
+Failed submissions automatically roll back the optimistic counter (or hard-
+refresh on an "invalid nonce" rejection). Lower-level building blocks are also
+public: `RestClient`, `NonceManager`, and the per-transaction structs.
+
+> Scope: this first pass covers the trading-critical path (orders, cancels,
+> modify, market orders + slippage, withdraw, leverage, auth tokens, batch
+> submission). The full REST read surface and the live WebSocket feed are not
+> yet ported.
+
 ## API key generation & auth tokens
 
 ```rust

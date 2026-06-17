@@ -19,8 +19,9 @@ use crate::hash::{fp5_from_canonical_le_bytes, gf, hash_to_fp5};
 pub struct ChangePubKey {
     pub account_index: i64,
     pub api_key_index: u8,
+    /// The new 40-byte public key (little-endian limbs).
     #[serde(rename = "PubKey", serialize_with = "b64::serialize")]
-    pub pub_key: Vec<u8>,
+    pub pub_key: [u8; PUB_KEY_LENGTH],
     #[serde(rename = "L1Sig")]
     pub l1_sig: String,
     pub expired_at: i64,
@@ -46,9 +47,6 @@ impl TxInfo for ChangePubKey {
         check_api_key_index(self.api_key_index)?;
         check_nonce(self.nonce)?;
         check_expired_at(self.expired_at)?;
-        if self.pub_key.len() != PUB_KEY_LENGTH {
-            return Err(Error::PubKeyInvalid);
-        }
         Ok(())
     }
 
@@ -80,7 +78,7 @@ impl TxInfo for ChangePubKey {
     fn message_to_sign(&self, _chain_id: u32) -> Option<String> {
         Some(format!(
             "Register Lighter Account\n\npubkey: 0x{}\nnonce: {}\naccount index: {}\napi key index: {}\nOnly sign this message for a trusted client!",
-            hex::encode(&self.pub_key),
+            hex::encode(self.pub_key),
             hex10_from_u64(self.nonce as u64),
             hex10_from_u64(self.account_index as u64),
             hex10_from_u64(self.api_key_index as u64),

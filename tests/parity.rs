@@ -200,7 +200,7 @@ fn change_pub_key() {
     let tx = ChangePubKey {
         account_index: ACCOUNT,
         api_key_index: API_KEY,
-        pub_key: vec![0u8; 40],
+        pub_key: [0u8; 40],
         l1_sig: String::new(),
         expired_at: EXPIRED_AT,
         nonce: NONCE,

@@ -23,9 +23,9 @@ pub const DEFAULT_EXPIRE_MS: i64 = 10 * 60 * 1000 - 1000;
 pub struct TransactOpts {
     pub from_account_index: Option<i64>,
     pub api_key_index: Option<u8>,
-    /// UnixMilli expiry; `0` means "use the default lifetime".
-    pub expired_at: i64,
-    /// `None` or `Some(-1)` triggers an HTTP nonce lookup.
+    /// UnixMilli expiry. `None` uses the default lifetime ([`DEFAULT_EXPIRE_MS`]).
+    pub expired_at: Option<i64>,
+    /// Explicit nonce. `None` fetches the next nonce over HTTP.
     pub nonce: Option<i64>,
     pub tx_attributes: Option<TxAttributes>,
 }
@@ -95,16 +95,14 @@ impl TxClient {
     }
 
     fn fulfill(&self, opts: &TransactOpts) -> Result<Resolved> {
-        let expired_at = if opts.expired_at == 0 {
-            now_unix_millis() + DEFAULT_EXPIRE_MS
-        } else {
-            opts.expired_at
-        };
+        let expired_at = opts
+            .expired_at
+            .unwrap_or_else(|| now_unix_millis() + DEFAULT_EXPIRE_MS);
         let account_index = opts.from_account_index.unwrap_or(self.account_index);
         let api_key_index = opts.api_key_index.unwrap_or(self.api_key_index);
         let nonce = match opts.nonce {
-            Some(n) if n != -1 => n,
-            _ => {
+            Some(n) => n,
+            None => {
                 let http = self.http.as_ref().ok_or(Error::NonceUnavailable)?;
                 http.get_next_nonce(account_index, api_key_index)?
             }
@@ -157,6 +155,29 @@ pub struct OrderReq {
     pub reduce_only: u8,
     pub trigger_price: u32,
     pub order_expiry: i64,
+}
+
+/// Parameters for a transfer (mirrors `types.TransferTxReq`).
+#[derive(Debug, Clone)]
+pub struct TransferReq {
+    pub to_account_index: i64,
+    pub asset_index: i16,
+    pub from_route_type: u8,
+    pub to_route_type: u8,
+    pub amount: i64,
+    pub usdc_fee: i64,
+    pub memo: [u8; 32],
+}
+
+/// Parameters for an integrator approval (mirrors `types.ApproveIntegratorTxReq`).
+#[derive(Debug, Clone)]
+pub struct ApproveIntegratorReq {
+    pub integrator_account_index: i64,
+    pub max_perps_taker_fee: u32,
+    pub max_perps_maker_fee: u32,
+    pub max_spot_taker_fee: u32,
+    pub max_spot_maker_fee: u32,
+    pub approval_expiry: i64,
 }
 
 impl From<OrderReq> for OrderInfo {
@@ -293,7 +314,7 @@ impl TxClient {
     }
 
     /// Signs a change-pubkey transaction. `pub_key` is the 40-byte new key.
-    pub fn change_pub_key(&self, pub_key: Vec<u8>, opts: &TransactOpts) -> Result<ChangePubKey> {
+    pub fn change_pub_key(&self, pub_key: [u8; 40], opts: &TransactOpts) -> Result<ChangePubKey> {
         let r = self.fulfill(opts)?;
         let mut tx = ChangePubKey {
             account_index: r.account_index,
@@ -327,29 +348,18 @@ impl TxClient {
     }
 
     /// Signs a transfer transaction.
-    #[allow(clippy::too_many_arguments)]
-    pub fn transfer(
-        &self,
-        to_account_index: i64,
-        asset_index: i16,
-        from_route_type: u8,
-        to_route_type: u8,
-        amount: i64,
-        usdc_fee: i64,
-        memo: [u8; 32],
-        opts: &TransactOpts,
-    ) -> Result<Transfer> {
+    pub fn transfer(&self, req: TransferReq, opts: &TransactOpts) -> Result<Transfer> {
         let r = self.fulfill(opts)?;
         let mut tx = Transfer {
             from_account_index: r.account_index,
             api_key_index: r.api_key_index,
-            to_account_index,
-            asset_index,
-            from_route_type,
-            to_route_type,
-            amount,
-            usdc_fee,
-            memo,
+            to_account_index: req.to_account_index,
+            asset_index: req.asset_index,
+            from_route_type: req.from_route_type,
+            to_route_type: req.to_route_type,
+            amount: req.amount,
+            usdc_fee: req.usdc_fee,
+            memo: req.memo,
             expired_at: r.expired_at,
             nonce: r.nonce,
             sig: Vec::new(),
@@ -481,27 +491,21 @@ impl TxClient {
     }
 
     /// Signs an approve-integrator transaction.
-    #[allow(clippy::too_many_arguments)]
     pub fn approve_integrator(
         &self,
-        integrator_account_index: i64,
-        max_perps_taker_fee: u32,
-        max_perps_maker_fee: u32,
-        max_spot_taker_fee: u32,
-        max_spot_maker_fee: u32,
-        approval_expiry: i64,
+        req: ApproveIntegratorReq,
         opts: &TransactOpts,
     ) -> Result<ApproveIntegrator> {
         let r = self.fulfill(opts)?;
         let mut tx = ApproveIntegrator {
             account_index: r.account_index,
             api_key_index: r.api_key_index,
-            integrator_account_index,
-            max_perps_taker_fee,
-            max_perps_maker_fee,
-            max_spot_taker_fee,
-            max_spot_maker_fee,
-            approval_expiry,
+            integrator_account_index: req.integrator_account_index,
+            max_perps_taker_fee: req.max_perps_taker_fee,
+            max_perps_maker_fee: req.max_perps_maker_fee,
+            max_spot_taker_fee: req.max_spot_taker_fee,
+            max_spot_maker_fee: req.max_spot_maker_fee,
+            approval_expiry: req.approval_expiry,
             expired_at: r.expired_at,
             nonce: r.nonce,
             sig: Vec::new(),

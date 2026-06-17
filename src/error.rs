@@ -141,4 +141,18 @@ pub enum Error {
     Http(String),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    // -- trading runtime errors --
+    #[error("api error (code {code}): {message}")]
+    Api { code: i32, message: String },
+    #[error("no signer configured for api key index {0}")]
+    UnknownApiKey(u8),
+    #[error("nonce manager is disabled; provide nonce and api_key_index explicitly")]
+    NonceManagerDisabled,
+    #[error("excessive slippage")]
+    ExcessiveSlippage,
+    #[error("insufficient order-book depth to guarantee the requested size")]
+    InsufficientDepth,
+    #[error("order book is empty for this side")]
+    EmptyOrderBook,
 }
