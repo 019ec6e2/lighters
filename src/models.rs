@@ -132,6 +132,441 @@ pub struct AccountApiKeys {
     pub api_keys: Vec<ApiKeyEntry>,
 }
 
+// ---------------------------------------------------------------------------
+// Read-surface models (account, orders, books, trades, candles, funding, …)
+// ---------------------------------------------------------------------------
+
+/// A resting/historical order (`Order`). Decimal fields are API strings.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Order {
+    #[serde(default)]
+    pub order_index: i64,
+    #[serde(default)]
+    pub client_order_index: i64,
+    #[serde(default)]
+    pub order_id: String,
+    #[serde(default)]
+    pub client_order_id: String,
+    #[serde(default)]
+    pub market_index: i64,
+    #[serde(default)]
+    pub owner_account_index: i64,
+    #[serde(default)]
+    pub initial_base_amount: String,
+    #[serde(default)]
+    pub price: String,
+    #[serde(default)]
+    pub remaining_base_amount: String,
+    #[serde(default)]
+    pub filled_base_amount: String,
+    #[serde(default)]
+    pub filled_quote_amount: String,
+    #[serde(default)]
+    pub is_ask: bool,
+    #[serde(default)]
+    pub side: String,
+    #[serde(rename = "type", default)]
+    pub order_type: String,
+    #[serde(default)]
+    pub time_in_force: String,
+    #[serde(default)]
+    pub reduce_only: bool,
+    #[serde(default)]
+    pub trigger_price: String,
+    #[serde(default)]
+    pub order_expiry: i64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub nonce: i64,
+    #[serde(default)]
+    pub timestamp: i64,
+}
+
+/// Response to the order-list endpoints (`accountActiveOrders` /
+/// `accountInactiveOrders`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct Orders {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+    #[serde(default)]
+    pub orders: Vec<Order>,
+}
+
+/// A single open position on an account (`AccountPosition`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccountPosition {
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub initial_margin_fraction: String,
+    #[serde(default)]
+    pub sign: i64,
+    #[serde(default)]
+    pub position: String,
+    #[serde(default)]
+    pub avg_entry_price: String,
+    #[serde(default)]
+    pub position_value: String,
+    #[serde(default)]
+    pub unrealized_pnl: String,
+    #[serde(default)]
+    pub realized_pnl: String,
+    #[serde(default)]
+    pub liquidation_price: String,
+    #[serde(default)]
+    pub margin_mode: i64,
+    #[serde(default)]
+    pub allocated_margin: String,
+}
+
+/// A detailed account record (`DetailedAccount`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DetailedAccount {
+    #[serde(default)]
+    pub account_index: i64,
+    #[serde(default)]
+    pub index: i64,
+    #[serde(default)]
+    pub l1_address: String,
+    #[serde(default)]
+    pub account_type: i64,
+    #[serde(default)]
+    pub account_trading_mode: i64,
+    #[serde(default)]
+    pub collateral: String,
+    #[serde(default)]
+    pub available_balance: String,
+    #[serde(default)]
+    pub total_asset_value: String,
+    #[serde(default)]
+    pub status: i64,
+    #[serde(default)]
+    pub positions: Vec<AccountPosition>,
+}
+
+/// Response to `GET /api/v1/account`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DetailedAccounts {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub total: i64,
+    #[serde(default)]
+    pub accounts: Vec<DetailedAccount>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+}
+
+/// A market/order-book listing (`OrderBook`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrderBook {
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub market_type: String,
+    #[serde(default)]
+    pub base_asset_id: i64,
+    #[serde(default)]
+    pub quote_asset_id: i64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub taker_fee: String,
+    #[serde(default)]
+    pub maker_fee: String,
+    #[serde(default)]
+    pub min_base_amount: String,
+    #[serde(default)]
+    pub min_quote_amount: String,
+    #[serde(default)]
+    pub supported_size_decimals: i64,
+    #[serde(default)]
+    pub supported_price_decimals: i64,
+    #[serde(default)]
+    pub supported_quote_decimals: i64,
+}
+
+/// Response to `GET /api/v1/orderBooks`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrderBooks {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub order_books: Vec<OrderBook>,
+}
+
+/// A detailed market listing with live stats (`PerpsOrderBookDetail` /
+/// `SpotOrderBookDetail`). Fields absent for a side are left at their defaults.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrderBookDetail {
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub market_type: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub taker_fee: String,
+    #[serde(default)]
+    pub maker_fee: String,
+    #[serde(default)]
+    pub min_base_amount: String,
+    #[serde(default)]
+    pub min_quote_amount: String,
+    #[serde(default)]
+    pub supported_size_decimals: i64,
+    #[serde(default)]
+    pub supported_price_decimals: i64,
+    #[serde(default)]
+    pub supported_quote_decimals: i64,
+    #[serde(default)]
+    pub size_decimals: i64,
+    #[serde(default)]
+    pub price_decimals: i64,
+    #[serde(default)]
+    pub last_trade_price: f64,
+    #[serde(default)]
+    pub daily_quote_token_volume: f64,
+    #[serde(default)]
+    pub daily_price_change: f64,
+    #[serde(default)]
+    pub open_interest: f64,
+}
+
+/// Response to `GET /api/v1/orderBookDetails`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OrderBookDetails {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub order_book_details: Vec<OrderBookDetail>,
+    #[serde(default)]
+    pub spot_order_book_details: Vec<OrderBookDetail>,
+}
+
+/// A public trade (`Trade`). Decimal fields are API strings.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Trade {
+    #[serde(default)]
+    pub trade_id: i64,
+    #[serde(default)]
+    pub tx_hash: String,
+    #[serde(rename = "type", default)]
+    pub trade_type: String,
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub size: String,
+    #[serde(default)]
+    pub price: String,
+    #[serde(default)]
+    pub usd_amount: String,
+    #[serde(default)]
+    pub ask_id: i64,
+    #[serde(default)]
+    pub bid_id: i64,
+    #[serde(default)]
+    pub ask_account_id: i64,
+    #[serde(default)]
+    pub bid_account_id: i64,
+    #[serde(default)]
+    pub is_maker_ask: bool,
+    #[serde(default)]
+    pub block_height: i64,
+    #[serde(default)]
+    pub timestamp: i64,
+}
+
+/// Response to `GET /api/v1/recentTrades` and `GET /api/v1/trades`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Trades {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+    #[serde(default)]
+    pub trades: Vec<Trade>,
+}
+
+/// A single OHLCV candle (`Candle`). The API uses terse single-letter keys.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Candle {
+    /// Start timestamp.
+    #[serde(rename = "t", default)]
+    pub timestamp: i64,
+    #[serde(rename = "o", default)]
+    pub open: String,
+    #[serde(rename = "h", default)]
+    pub high: String,
+    #[serde(rename = "l", default)]
+    pub low: String,
+    #[serde(rename = "c", default)]
+    pub close: String,
+    /// Base-asset volume.
+    #[serde(rename = "v", default)]
+    pub base_volume: String,
+    /// Quote-asset volume.
+    #[serde(rename = "V", default)]
+    pub quote_volume: String,
+}
+
+/// Response to `GET /api/v1/candles`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Candles {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(rename = "r", default)]
+    pub resolution: String,
+    #[serde(rename = "c", default)]
+    pub candles: Vec<Candle>,
+}
+
+/// A funding data point (`Funding`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct Funding {
+    #[serde(default)]
+    pub timestamp: i64,
+    #[serde(default)]
+    pub value: String,
+    #[serde(default)]
+    pub rate: String,
+    #[serde(default)]
+    pub direction: String,
+}
+
+/// Response to `GET /api/v1/fundings`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Fundings {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub resolution: String,
+    #[serde(default)]
+    pub fundings: Vec<Funding>,
+}
+
+/// A current funding rate for a market (`FundingRate`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct FundingRate {
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub exchange: String,
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub rate: String,
+}
+
+/// Response to `GET /api/v1/funding-rates`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FundingRates {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub funding_rates: Vec<FundingRate>,
+}
+
+/// Response to `GET /api/v1/systemConfig`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SystemConfig {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub liquidity_pool_index: i64,
+    #[serde(default)]
+    pub staking_pool_index: i64,
+    #[serde(default)]
+    pub funding_fee_rebate_account_index: i64,
+    #[serde(default)]
+    pub liquidity_pool_cooldown_period: i64,
+    #[serde(default)]
+    pub staking_pool_lockup_period: i64,
+    #[serde(default)]
+    pub max_integrator_perps_maker_fee: i64,
+    #[serde(default)]
+    pub max_integrator_perps_taker_fee: i64,
+    #[serde(default)]
+    pub max_integrator_spot_maker_fee: i64,
+    #[serde(default)]
+    pub max_integrator_spot_taker_fee: i64,
+    #[serde(default)]
+    pub market_maker_incentive_account_index: i64,
+}
+
+/// A transaction record (`Tx` / `EnrichedTx`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnrichedTx {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub hash: String,
+    #[serde(rename = "type", default)]
+    pub tx_type: i64,
+    #[serde(default)]
+    pub info: String,
+    #[serde(default)]
+    pub event_info: String,
+    #[serde(default)]
+    pub status: i64,
+    #[serde(default)]
+    pub transaction_index: i64,
+    #[serde(default)]
+    pub l1_address: String,
+    #[serde(default)]
+    pub account_index: i64,
+    #[serde(default)]
+    pub nonce: i64,
+    #[serde(default)]
+    pub expire_at: i64,
+    #[serde(default)]
+    pub block_height: i64,
+    #[serde(default)]
+    pub api_key_index: i64,
+    #[serde(default)]
+    pub transaction_time: i64,
+}
+
+/// Response to `GET /api/v1/txs` and `GET /api/v1/accountTxs`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Txs {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub txs: Vec<EnrichedTx>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +577,37 @@ mod tests {
         assert_eq!(ticks("100").unwrap(), 100);
         assert_eq!(ticks("0.00010000").unwrap(), 10000);
         assert!(ticks("").is_err());
+    }
+
+    #[test]
+    fn orders_deserialize_subset_and_ignore_extras() {
+        let json = r#"{
+            "code": 200,
+            "orders": [{
+                "order_index": 7,
+                "market_index": 1,
+                "price": "100.5",
+                "is_ask": true,
+                "type": "limit",
+                "status": "open",
+                "unknown_field": 42
+            }]
+        }"#;
+        let parsed: Orders = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.code, 200);
+        assert_eq!(parsed.orders.len(), 1);
+        assert_eq!(parsed.orders[0].order_index, 7);
+        assert_eq!(parsed.orders[0].order_type, "limit");
+        assert!(parsed.orders[0].is_ask);
+    }
+
+    #[test]
+    fn candles_use_terse_keys() {
+        let json = r#"{"code":200,"r":"1m","c":[{"t":1000,"o":"1","h":"2","l":"0.5","c":"1.5","v":"10","V":"15"}]}"#;
+        let parsed: Candles = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.resolution, "1m");
+        assert_eq!(parsed.candles[0].timestamp, 1000);
+        assert_eq!(parsed.candles[0].close, "1.5");
+        assert_eq!(parsed.candles[0].quote_volume, "15");
     }
 }

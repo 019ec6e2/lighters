@@ -152,6 +152,34 @@ pub const ATTRIBUTE_TYPE_SELF_TRADE_BEHAVIOR_MODE: u8 = 6;
 pub const ATTRIBUTE_TYPE_SELF_TRADE_EQUALITY_MODE: u8 = 7;
 pub const MAX_ATTRIBUTE_TYPE: u8 = ATTRIBUTE_TYPE_SELF_TRADE_EQUALITY_MODE;
 
+// -- Asset ids & ticker scales --
+//
+// Off-chain amounts (floats) are scaled to integer ticks by an asset-specific
+// factor before signing, matching the Python client's `ASSET_TO_TICKER_SCALE`.
+pub const ASSET_ID_ETH: i16 = 1;
+pub const ASSET_ID_LIT: i16 = 2;
+pub const ASSET_ID_USDC: i16 = 3;
+pub const ASSET_ID_LINK: i16 = 5;
+pub const ASSET_ID_UNI: i16 = 6;
+pub const ASSET_ID_AAVE: i16 = 7;
+pub const ASSET_ID_SKY: i16 = 8;
+pub const ASSET_ID_LDO: i16 = 9;
+
+/// USDC ticker scale (1e6); also used for `update_margin` amounts.
+pub const USDC_TICKER_SCALE: u64 = 1_000_000;
+/// Default ticker scale for the 1e8 assets (ETH, LIT, LINK, …).
+pub const DEFAULT_TICKER_SCALE: u64 = 100_000_000;
+
+/// Returns the integer ticker scale for `asset_id`, or `None` if unsupported.
+pub fn ticker_scale(asset_id: i16) -> Option<u64> {
+    match asset_id {
+        ASSET_ID_USDC => Some(USDC_TICKER_SCALE),
+        ASSET_ID_ETH | ASSET_ID_LIT | ASSET_ID_LINK | ASSET_ID_UNI | ASSET_ID_AAVE
+        | ASSET_ID_SKY | ASSET_ID_LDO => Some(DEFAULT_TICKER_SCALE),
+        _ => None,
+    }
+}
+
 // -- Crypto sizes --
 pub const SIGNATURE_LENGTH: usize = 80;
 pub const PUB_KEY_LENGTH: usize = 40;

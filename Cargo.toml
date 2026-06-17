@@ -30,6 +30,16 @@ rand = "0.8"
 # `default-features = false` for a pure offline signer.
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "rustls-tls"] }
 
+# Ethereum L1 (EIP-191 personal_sign) signing for transfer / change-pubkey /
+# approve-integrator. secp256k1 ECDSA + keccak256.
+k256 = { version = "0.13", optional = true }
+sha3 = { version = "0.10", optional = true }
+
+# Async WebSocket client for live order-book / account streams.
+tokio-tungstenite = { version = "0.24", optional = true, default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
+tokio = { version = "1", optional = true, default-features = false, features = ["net"] }
+
 [features]
 default = ["http"]
 # Lightweight blocking client (offline signer + nonce/api-key lookups).
@@ -37,6 +47,10 @@ http = ["dep:reqwest", "reqwest/blocking"]
 # Full async trading runtime: REST submission, nonce manager, order-book reads
 # and high-level order helpers. Bring your own async runtime (e.g. tokio).
 trading = ["dep:reqwest"]
+# Ethereum L1 signing (enables the L1-signed transaction wrappers).
+eth = ["dep:k256", "dep:sha3"]
+# Async WebSocket live-data client.
+ws = ["trading", "dep:tokio-tungstenite", "dep:futures-util", "dep:tokio"]
 
 [dev-dependencies]
 serde_json = "1"

@@ -4,7 +4,7 @@
 //! in their own transport; [`ReqwestClient`] is a blocking default available
 //! behind the `http` feature.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 /// The subset of Lighter's REST API needed to build & submit transactions.
 pub trait HttpClient: Send + Sync {
@@ -18,6 +18,7 @@ pub trait HttpClient: Send + Sync {
 #[cfg(feature = "http")]
 mod reqwest_impl {
     use super::*;
+    use crate::error::Error;
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]

@@ -155,4 +155,10 @@ pub enum Error {
     InsufficientDepth,
     #[error("order book is empty for this side")]
     EmptyOrderBook,
+    #[error("unsupported asset id: {0}")]
+    UnsupportedAsset(i16),
+    #[error("invalid memo: expected 32 raw bytes, 64 hex chars, or 0x + 64 hex chars")]
+    InvalidMemo,
+    #[error("L1 (Ethereum) signing is required; provide an eth private key")]
+    L1SignerRequired,
 }

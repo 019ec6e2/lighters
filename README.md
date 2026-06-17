@@ -37,8 +37,16 @@ We verified that:
 lighter = { path = "../lighter-rust" }
 ```
 
-The optional `http` feature (on by default) pulls in a blocking `reqwest`
-client for nonce / api-key lookups. For a pure offline signer:
+Feature flags:
+
+| Feature | Enables |
+| --- | --- |
+| `http` *(default)* | Blocking `reqwest` client for nonce / api-key lookups. |
+| `trading` | Async runtime: REST submission, nonce manager, order/cancel/market helpers, prioritized read endpoints. |
+| `eth` | Ethereum L1 (EIP-191 `personal_sign`) signing for `transfer` / `change_pub_key` / `approve_integrator`. |
+| `ws` | Async WebSocket live-data client (implies `trading`). |
+
+For a pure offline signer:
 
 ```toml
 lighter = { path = "../lighter-rust", default-features = false }
@@ -142,10 +150,70 @@ Failed submissions automatically roll back the optimistic counter (or hard-
 refresh on an "invalid nonce" rejection). Lower-level building blocks are also
 public: `RestClient`, `NonceManager`, and the per-transaction structs.
 
-> Scope: this first pass covers the trading-critical path (orders, cancels,
-> modify, market orders + slippage, withdraw, leverage, auth tokens, batch
-> submission). The full REST read surface and the live WebSocket feed are not
-> yet ported.
+`TradingClient` covers the full trading surface: create / grouped / cancel /
+cancel-all / modify orders, TP & SL (market + limit) helpers, market orders by
+base size, quote amount, or slippage budget (`create_market_order`,
+`create_market_order_limited_slippage`, `create_market_order_if_slippage`,
+`create_market_order_quote_amount`), withdraw, transfer, update leverage /
+margin / account & asset config, create / update public pools, mint / burn
+shares, stake / unstake, sub-accounts, and approve-integrator. Float `amount`
+arguments are scaled by the asset's ticker scale (see
+`lighter::constants::ticker_scale`).
+
+### Ethereum L1 signing (`eth` feature)
+
+`transfer`, `change_pub_key`, and `approve_integrator` require an L1
+`personal_sign` (EIP-191) signature by the account's Ethereum wallet. Pass the
+L1 key and the client signs both layers:
+
+```rust
+let (tx, resp) = client
+    .transfer(
+        "0x<eth-private-key>",
+        /* to_account_index */ 2,
+        /* asset_id (ETH)    */ 1,
+        /* route_from        */ 0,
+        /* route_to          */ 0,
+        /* amount (float)    */ 1.5,
+        /* fee (usdc ticks)  */ 1_000,
+        /* memo (32B / hex)  */ &"00".repeat(32),
+        &TradeOpts::default(),
+    )
+    .await?;
+```
+
+For transfers between accounts under the same L1 master, use the
+`*_same_master_account` variants, which skip the L1 signature. `EthSigner` is
+also usable standalone for offline EIP-191 signing.
+
+### Prioritized REST reads (`trading` feature)
+
+`TradingClient` and `RestClient` expose the trading-relevant read endpoints:
+`account`, `active_orders` / `inactive_orders`, `order_books` /
+`order_book_details`, `recent_trades` / `trades`, `candles`, `fundings` /
+`funding_rates`, `system_config`, and `tx_by_hash` / `txs`.
+
+### WebSocket live data (`ws` feature)
+
+```rust
+use lighter::ws::{WsClient, WsEvent};
+
+let mut ws = WsClient::connect("mainnet.zklighter.elliot.ai", &[0], &[]).await?;
+while let Some(event) = ws.next_event().await? {
+    match event {
+        WsEvent::OrderBook { market_id, book } =>
+            println!("market {market_id}: {} bids / {} asks", book.bids.len(), book.asks.len()),
+        WsEvent::Account { account_id, .. } =>
+            println!("account {account_id} update"),
+    }
+}
+```
+
+The client answers pings, sends subscriptions on connect, and maintains
+incremental order-book state, surfacing a typed `WsEvent` pull-stream that
+composes with `tokio::select!`.
+
+> Out of scope: `paper_client` and the full ~60-endpoint REST read surface.
 
 ## API key generation & auth tokens
 

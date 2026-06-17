@@ -58,12 +58,16 @@ pub mod models;
 pub mod signer;
 pub mod transactions;
 
+#[cfg(feature = "eth")]
+pub mod eth;
 #[cfg(feature = "trading")]
 pub mod nonce;
 #[cfg(feature = "trading")]
 pub mod rest;
 #[cfg(feature = "trading")]
 pub mod trading;
+#[cfg(feature = "ws")]
+pub mod ws;
 
 pub use attributes::TxAttributes;
 pub use client::{
@@ -74,9 +78,13 @@ pub use error::{Error, Result};
 pub use signer::KeyManager;
 pub use transactions::{SignedTransaction, TxInfo};
 
+#[cfg(feature = "eth")]
+pub use eth::EthSigner;
 #[cfg(feature = "trading")]
 pub use nonce::{NonceManager, NonceStrategy};
 #[cfg(feature = "trading")]
 pub use rest::RestClient;
 #[cfg(feature = "trading")]
 pub use trading::{OrderParams, TradeOpts, TradingClient};
+#[cfg(feature = "ws")]
+pub use ws::{WsClient, WsEvent};
