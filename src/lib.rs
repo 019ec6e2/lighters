@@ -88,5 +88,5 @@ pub use rest::RestClient;
 pub use trading::{OrderParams, TradeOpts, TradingClient};
 #[cfg(feature = "ws")]
 pub use ws::{
-    AccountFill, AccountUpdate, WsClient, WsEvent, WsPosition, WsPositionFunding, WsTrade,
+    AccountFill, AccountUpdate, WsClient, WsConfig, WsEvent, WsPosition, WsPositionFunding, WsTrade,
 };

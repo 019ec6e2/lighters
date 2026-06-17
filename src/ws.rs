@@ -8,6 +8,11 @@
 //! [`WsEvent`] pull-stream via [`WsClient::next_event`], which composes
 //! naturally with `tokio::select!` and the rest of an async program.
 //!
+//! For long-running bots it auto-reconnects with exponential backoff, sends a
+//! periodic keepalive ping, and forces a reconnect when the stream goes idle —
+//! all tunable via [`WsConfig`]. After a reconnect it clears cached state and
+//! emits [`WsEvent::Reconnected`] before fresh snapshots replay.
+//!
 //! ```no_run
 //! # async fn run() -> lighter::Result<()> {
 //! use lighter::ws::{WsClient, WsEvent};
@@ -23,17 +28,22 @@
 //! ```
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
 use crate::error::{Error, Result};
 
 type Stream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Effectively-never duration for disabled keepalive / idle timers.
+const NEVER: Duration = Duration::from_secs(86_400);
 
 /// A single price level in a streamed order book.
 #[derive(Debug, Clone, Deserialize)]
@@ -69,6 +79,47 @@ pub enum WsEvent {
         account_id: String,
         update: Box<AccountUpdate>,
     },
+    /// Emitted after the client transparently reconnected and resubscribed
+    /// following a dropped connection or idle timeout. All locally cached
+    /// order-book / account state was cleared; treat the next snapshots as
+    /// authoritative.
+    Reconnected,
+}
+
+/// Tunables for [`WsClient`] reconnection and keepalive behavior.
+///
+/// [`Default`] enables auto-reconnect with exponential backoff, a 15s
+/// client-initiated keepalive ping, and a 60s idle watchdog.
+#[derive(Debug, Clone)]
+pub struct WsConfig {
+    /// Reconnect transparently when the connection drops or goes idle.
+    pub auto_reconnect: bool,
+    /// Maximum consecutive reconnect attempts before giving up. `None` retries
+    /// forever.
+    pub max_reconnect_attempts: Option<u32>,
+    /// First reconnect backoff; doubles up to `max_backoff`.
+    pub initial_backoff: Duration,
+    /// Backoff ceiling.
+    pub max_backoff: Duration,
+    /// Interval between client-initiated `ping` frames. `None` disables them
+    /// (the client still answers server pings).
+    pub ping_interval: Option<Duration>,
+    /// Force a reconnect if no frame arrives within this window. `None`
+    /// disables the watchdog.
+    pub idle_timeout: Option<Duration>,
+}
+
+impl Default for WsConfig {
+    fn default() -> Self {
+        WsConfig {
+            auto_reconnect: true,
+            max_reconnect_attempts: None,
+            initial_backoff: Duration::from_millis(500),
+            max_backoff: Duration::from_secs(30),
+            ping_interval: Some(Duration::from_secs(15)),
+            idle_timeout: Some(Duration::from_secs(60)),
+        }
+    }
 }
 
 /// A balance entry from an account update.
@@ -322,37 +373,64 @@ impl AccountUpdate {
 /// An async WebSocket client for Lighter's `/stream` endpoint.
 pub struct WsClient {
     ws: Stream,
+    host: String,
+    config: WsConfig,
     order_book_ids: Vec<String>,
     account_ids: Vec<String>,
     order_book_states: HashMap<String, OrderBookState>,
     account_states: HashMap<String, AccountUpdate>,
+    ping_interval: Interval,
+    idle_timeout: Duration,
+    last_activity: Instant,
+}
+
+/// The outcome of one `select!` race inside [`WsClient::next_event`].
+enum Race {
+    Frame(Option<std::result::Result<Message, tokio_tungstenite::tungstenite::Error>>),
+    PingDue,
+    Idle,
 }
 
 impl WsClient {
-    /// Connects and prepares subscriptions for the given market and account ids.
+    /// Connects with default [`WsConfig`] (auto-reconnect + keepalive on).
     ///
     /// `host` may include or omit the scheme (`https://` / `wss://`); the
     /// `/stream` path is appended automatically. At least one subscription is
     /// required. Subscriptions are sent once the server's `connected` frame
     /// arrives (driven by [`next_event`](Self::next_event)).
     pub async fn connect(host: &str, order_book_ids: &[i16], account_ids: &[i64]) -> Result<Self> {
+        Self::connect_with_config(host, order_book_ids, account_ids, WsConfig::default()).await
+    }
+
+    /// Connects with an explicit [`WsConfig`].
+    pub async fn connect_with_config(
+        host: &str,
+        order_book_ids: &[i16],
+        account_ids: &[i64],
+        config: WsConfig,
+    ) -> Result<Self> {
         if order_book_ids.is_empty() && account_ids.is_empty() {
             return Err(Error::MissingField("ws subscriptions"));
         }
         let host = host
             .trim_start_matches("https://")
             .trim_start_matches("wss://")
-            .trim_end_matches('/');
-        let url = format!("wss://{host}/stream");
-        let (ws, _) = connect_async(url)
-            .await
-            .map_err(|e| Error::Http(e.to_string()))?;
+            .trim_end_matches('/')
+            .to_string();
+        let ws = dial(&host).await?;
+        let ping_interval = make_interval(config.ping_interval.unwrap_or(NEVER));
+        let idle_timeout = config.idle_timeout.unwrap_or(NEVER);
         Ok(WsClient {
             ws,
+            host,
+            config,
             order_book_ids: order_book_ids.iter().map(|i| i.to_string()).collect(),
             account_ids: account_ids.iter().map(|i| i.to_string()).collect(),
             order_book_states: HashMap::new(),
             account_states: HashMap::new(),
+            ping_interval,
+            idle_timeout,
+            last_activity: Instant::now(),
         })
     }
 
@@ -367,41 +445,138 @@ impl WsClient {
     }
 
     /// Reads frames until the next [`WsEvent`], or `Ok(None)` when the stream
-    /// closes. Pings, the `connected` handshake, and subscriptions are handled
-    /// internally.
+    /// closes and auto-reconnect is disabled. Server/client pings, the
+    /// `connected` handshake, subscriptions, the idle watchdog, and transparent
+    /// reconnection are all handled internally.
     pub async fn next_event(&mut self) -> Result<Option<WsEvent>> {
-        while let Some(frame) = self.ws.next().await {
-            let frame = frame.map_err(|e| Error::Http(e.to_string()))?;
-            let text = match frame {
-                Message::Text(t) => t.to_string(),
-                Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
-                Message::Ping(p) => {
-                    self.ws
-                        .send(Message::Pong(p))
-                        .await
-                        .map_err(|e| Error::Http(e.to_string()))?;
-                    continue;
-                }
-                Message::Close(_) => return Ok(None),
-                _ => continue,
+        loop {
+            let deadline = self.last_activity + self.idle_timeout;
+            let race = tokio::select! {
+                frame = self.ws.next() => Race::Frame(frame),
+                _ = self.ping_interval.tick() => Race::PingDue,
+                _ = tokio::time::sleep_until(deadline) => Race::Idle,
             };
 
-            let value: Value = serde_json::from_str(&text)?;
-            match value.get("type").and_then(Value::as_str).unwrap_or("") {
-                "connected" => self.send_subscriptions().await?,
-                "ping" => self.send_pong().await?,
-                "subscribed/order_book" => {
-                    return Ok(Some(self.handle_order_book(&value, true)?));
+            match race {
+                Race::PingDue => {
+                    if self.config.ping_interval.is_some()
+                        && self.send_json(r#"{"type":"ping"}"#).await.is_err()
+                    {
+                        if let Some(ev) = self.on_disconnect().await? {
+                            return Ok(Some(ev));
+                        }
+                        return Ok(None);
+                    }
                 }
-                "update/order_book" => {
-                    return Ok(Some(self.handle_order_book(&value, false)?));
+                Race::Idle => {
+                    if let Some(ev) = self.on_disconnect().await? {
+                        return Ok(Some(ev));
+                    }
+                    return Ok(None);
                 }
-                "subscribed/account_all" => return Ok(Some(self.handle_account(value, true)?)),
-                "update/account_all" => return Ok(Some(self.handle_account(value, false)?)),
-                _ => continue,
+                Race::Frame(None) => {
+                    if let Some(ev) = self.on_disconnect().await? {
+                        return Ok(Some(ev));
+                    }
+                    return Ok(None);
+                }
+                Race::Frame(Some(Err(_))) => {
+                    if let Some(ev) = self.on_disconnect().await? {
+                        return Ok(Some(ev));
+                    }
+                    return Ok(None);
+                }
+                Race::Frame(Some(Ok(frame))) => {
+                    self.last_activity = Instant::now();
+                    let text = match frame {
+                        Message::Text(t) => t.to_string(),
+                        Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
+                        Message::Ping(p) => {
+                            self.ws
+                                .send(Message::Pong(p))
+                                .await
+                                .map_err(|e| Error::Http(e.to_string()))?;
+                            continue;
+                        }
+                        Message::Close(_) => {
+                            if let Some(ev) = self.on_disconnect().await? {
+                                return Ok(Some(ev));
+                            }
+                            return Ok(None);
+                        }
+                        _ => continue,
+                    };
+                    if let Some(event) = self.handle_text(&text).await? {
+                        return Ok(Some(event));
+                    }
+                }
             }
         }
-        Ok(None)
+    }
+
+    /// Dispatches one decoded text frame, returning an event to surface (or
+    /// `None` for internally-handled control frames). Unparseable frames are
+    /// skipped rather than killing the stream.
+    async fn handle_text(&mut self, text: &str) -> Result<Option<WsEvent>> {
+        let value: Value = match serde_json::from_str(text) {
+            Ok(v) => v,
+            Err(_) => return Ok(None),
+        };
+        match value.get("type").and_then(Value::as_str).unwrap_or("") {
+            "connected" => {
+                self.send_subscriptions().await?;
+                Ok(None)
+            }
+            "ping" => {
+                self.send_pong().await?;
+                Ok(None)
+            }
+            "subscribed/order_book" => Ok(Some(self.handle_order_book(&value, true)?)),
+            "update/order_book" => Ok(Some(self.handle_order_book(&value, false)?)),
+            "subscribed/account_all" => Ok(Some(self.handle_account(value, true)?)),
+            "update/account_all" => Ok(Some(self.handle_account(value, false)?)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Handles a dropped/idle connection: reconnects (clearing stale state) when
+    /// `auto_reconnect` is set, returning a [`WsEvent::Reconnected`]; otherwise
+    /// signals end-of-stream via `Ok(None)`.
+    async fn on_disconnect(&mut self) -> Result<Option<WsEvent>> {
+        if !self.config.auto_reconnect {
+            return Ok(None);
+        }
+        self.reconnect().await?;
+        Ok(Some(WsEvent::Reconnected))
+    }
+
+    /// Reconnects with exponential backoff and clears cached state so the next
+    /// snapshots are authoritative. Subscriptions are re-sent on the server's
+    /// `connected` frame.
+    async fn reconnect(&mut self) -> Result<()> {
+        let mut backoff = self.config.initial_backoff;
+        let mut attempt = 0u32;
+        loop {
+            attempt += 1;
+            match dial(&self.host).await {
+                Ok(ws) => {
+                    self.ws = ws;
+                    self.order_book_states.clear();
+                    self.account_states.clear();
+                    self.ping_interval =
+                        make_interval(self.config.ping_interval.unwrap_or(NEVER));
+                    self.last_activity = Instant::now();
+                    return Ok(());
+                }
+                Err(e) => {
+                    if matches!(self.config.max_reconnect_attempts, Some(max) if attempt >= max) {
+                        return Err(e);
+                    }
+                    tokio::time::sleep(backoff).await;
+                    backoff = next_backoff(backoff, self.config.max_backoff);
+                }
+            }
+        }
     }
 
     async fn send_subscriptions(&mut self) -> Result<()> {
@@ -467,6 +642,28 @@ impl WsClient {
             update: Box::new(update),
         })
     }
+}
+
+/// Doubles `current` backoff, capped at `max`.
+fn next_backoff(current: Duration, max: Duration) -> Duration {
+    current.saturating_mul(2).min(max)
+}
+
+/// Opens a fresh WebSocket connection to `host`'s `/stream` endpoint.
+async fn dial(host: &str) -> Result<Stream> {
+    let url = format!("wss://{host}/stream");
+    let (ws, _) = connect_async(url)
+        .await
+        .map_err(|e| Error::Http(e.to_string()))?;
+    Ok(ws)
+}
+
+/// A self-pacing interval whose first tick is skipped (so we don't ping
+/// immediately on connect) and that never bursts after a stall.
+fn make_interval(period: Duration) -> Interval {
+    let mut interval = tokio::time::interval_at(Instant::now() + period, period);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    interval
 }
 
 /// Extracts the id portion of a channel field like `"order_book:1"` → `"1"`.
@@ -560,6 +757,24 @@ mod tests {
             price: price.to_string(),
             size: size.to_string(),
         }
+    }
+
+    #[test]
+    fn backoff_doubles_and_saturates_at_cap() {
+        let max = Duration::from_secs(30);
+        assert_eq!(next_backoff(Duration::from_millis(500), max), Duration::from_secs(1));
+        assert_eq!(next_backoff(Duration::from_secs(20), max), max);
+        // Never exceeds the cap, even from a huge starting point.
+        assert_eq!(next_backoff(Duration::from_secs(10_000), max), max);
+    }
+
+    #[test]
+    fn default_config_enables_reconnect_and_keepalive() {
+        let c = WsConfig::default();
+        assert!(c.auto_reconnect);
+        assert!(c.max_reconnect_attempts.is_none());
+        assert!(c.ping_interval.is_some());
+        assert!(c.idle_timeout.is_some());
     }
 
     #[test]

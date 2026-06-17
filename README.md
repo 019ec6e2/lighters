@@ -243,8 +243,31 @@ while let Some(event) = ws.next_event().await? {
                 println!("position mkt0: {}", pos.signed_size());
             }
         }
+        WsEvent::Reconnected => {
+            // Cached state was cleared; fresh snapshots follow. Reset any
+            // locally-derived state (e.g. mid-prices, open orders) here.
+            println!("ws reconnected");
+        }
     }
 }
+```
+
+By default the client auto-reconnects with exponential backoff, sends a 15s
+keepalive ping, and forces a reconnect if no frame arrives within 60s — so a
+long-running bot survives drops without manual restart logic. On reconnect it
+clears its cached order-book / account state and emits `WsEvent::Reconnected`;
+the server then replays fresh snapshots. Tune via `WsConfig`:
+
+```rust
+use lighter::ws::WsConfig;
+use std::time::Duration;
+
+let cfg = WsConfig {
+    idle_timeout: Some(Duration::from_secs(30)),
+    max_reconnect_attempts: Some(10),
+    ..Default::default()
+};
+let mut ws = WsClient::connect_with_config(host, &[0], &[ACCOUNT], cfg).await?;
 ```
 
 Account messages from the `account_all` channel are parsed into a typed
@@ -257,9 +280,9 @@ answers pings, sends subscriptions on connect, and maintains incremental
 order-book state, surfacing a typed `WsEvent` pull-stream that composes with
 `tokio::select!`.
 
-> Not yet handled: auto-reconnect / resubscribe on disconnect, client-initiated
-> keepalive, and the auth-gated account channels (`account_market`,
-> `account_all_orders`, …) which need an auth token.
+> Not yet handled: the auth-gated account channels (`account_market`,
+> `account_all_orders`, …) which need a signed auth token, and order-book
+> sequence-gap detection via `offset`/`nonce`.
 
 > Out of scope: `paper_client` and the full ~60-endpoint REST read surface.
 
