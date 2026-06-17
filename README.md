@@ -219,20 +219,47 @@ also usable standalone for offline EIP-191 signing.
 ```rust
 use lighter::ws::{WsClient, WsEvent};
 
-let mut ws = WsClient::connect("mainnet.zklighter.elliot.ai", &[0], &[]).await?;
+const ACCOUNT: i64 = 10;
+
+// Subscribe to market 0's book *and* account 10's stream (no auth needed for
+// the `account_all` channel).
+let mut ws = WsClient::connect("mainnet.zklighter.elliot.ai", &[0], &[ACCOUNT]).await?;
 while let Some(event) = ws.next_event().await? {
     match event {
         WsEvent::OrderBook { market_id, book } =>
             println!("market {market_id}: {} bids / {} asks", book.bids.len(), book.asks.len()),
-        WsEvent::Account { account_id, .. } =>
-            println!("account {account_id} update"),
+        WsEvent::Account { account_id, update } => {
+            // `update.is_snapshot` is true for the first message (history),
+            // false for incremental deltas (newly matched fills).
+            for fill in update.fills_for(ACCOUNT) {
+                let side = if fill.is_buy { "buy" } else { "sell" };
+                let role = if fill.is_maker { "maker" } else { "taker" };
+                println!(
+                    "fill acct {account_id} mkt {} {side} {role} {} @ {} (fee {})",
+                    fill.market_id, fill.size, fill.price, fill.fee,
+                );
+            }
+            if let Some(pos) = update.position(0) {
+                println!("position mkt0: {}", pos.signed_size());
+            }
+        }
     }
 }
 ```
 
-The client answers pings, sends subscriptions on connect, and maintains
-incremental order-book state, surfacing a typed `WsEvent` pull-stream that
-composes with `tokio::select!`.
+Account messages from the `account_all` channel are parsed into a typed
+[`AccountUpdate`] (positions, balances, funding, pool shares, and per-market
+trades). `WsTrade::fill_for` / `AccountUpdate::fills_for` resolve each trade into
+an [`AccountFill`] from *your* account's perspective — side (buy/sell),
+maker/taker role, and the fee charged to you — which is exactly what an MM bot
+needs to feed its P&L instead of optimistic booking + REST reconcile. The client
+answers pings, sends subscriptions on connect, and maintains incremental
+order-book state, surfacing a typed `WsEvent` pull-stream that composes with
+`tokio::select!`.
+
+> Not yet handled: auto-reconnect / resubscribe on disconnect, client-initiated
+> keepalive, and the auth-gated account channels (`account_market`,
+> `account_all_orders`, …) which need an auth token.
 
 > Out of scope: `paper_client` and the full ~60-endpoint REST read surface.
 

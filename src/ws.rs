@@ -25,7 +25,8 @@
 use std::collections::HashMap;
 
 use futures_util::{SinkExt, StreamExt};
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
@@ -59,9 +60,263 @@ pub enum WsEvent {
         market_id: String,
         book: OrderBookState,
     },
-    /// An account snapshot or update. The raw JSON is preserved since the
-    /// account payload is large and use-case specific.
-    Account { account_id: String, data: Value },
+    /// A typed account snapshot or incremental update from the `account_all`
+    /// channel (positions, trades/fills, balances, funding, pool shares).
+    ///
+    /// Boxed because the account payload is much larger than the order-book
+    /// variant.
+    Account {
+        account_id: String,
+        update: Box<AccountUpdate>,
+    },
+}
+
+/// A balance entry from an account update.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WsAsset {
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub asset_id: i64,
+    #[serde(default)]
+    pub balance: String,
+    #[serde(default)]
+    pub locked_balance: String,
+}
+
+/// A perp/spot position from an account update.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WsPosition {
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub initial_margin_fraction: String,
+    #[serde(default)]
+    pub open_order_count: i64,
+    #[serde(default)]
+    pub pending_order_count: i64,
+    #[serde(default)]
+    pub position_tied_order_count: i64,
+    /// `1` for long, `-1` for short.
+    #[serde(default)]
+    pub sign: i64,
+    /// Absolute position size (base units, as a decimal string).
+    #[serde(default)]
+    pub position: String,
+    #[serde(default)]
+    pub avg_entry_price: String,
+    #[serde(default)]
+    pub position_value: String,
+    #[serde(default)]
+    pub unrealized_pnl: String,
+    #[serde(default)]
+    pub realized_pnl: String,
+    #[serde(default)]
+    pub liquidation_price: String,
+    #[serde(default)]
+    pub total_funding_paid_out: String,
+    #[serde(default)]
+    pub margin_mode: i64,
+    #[serde(default)]
+    pub allocated_margin: String,
+}
+
+impl WsPosition {
+    /// Signed position size (negative for shorts), parsed from the string.
+    pub fn signed_size(&self) -> f64 {
+        let mag = self.position.parse::<f64>().unwrap_or(0.0).abs();
+        if self.sign < 0 {
+            -mag
+        } else {
+            mag
+        }
+    }
+}
+
+/// A trade (fill) as delivered over the `account_all` channel.
+///
+/// The account is the `ask` side (seller) when its index equals
+/// [`ask_account_id`](Self::ask_account_id) and the `bid` side (buyer) when it
+/// equals [`bid_account_id`](Self::bid_account_id). Use [`fill_for`](Self::fill_for)
+/// to resolve side / maker-taker / fee from your account's perspective.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WsTrade {
+    #[serde(default)]
+    pub trade_id: i64,
+    #[serde(default)]
+    pub tx_hash: String,
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub size: String,
+    #[serde(default)]
+    pub price: String,
+    #[serde(default)]
+    pub usd_amount: String,
+    #[serde(default)]
+    pub ask_id: i64,
+    #[serde(default)]
+    pub bid_id: i64,
+    #[serde(default)]
+    pub ask_account_id: i64,
+    #[serde(default)]
+    pub bid_account_id: i64,
+    #[serde(default)]
+    pub is_maker_ask: bool,
+    #[serde(default)]
+    pub block_height: i64,
+    #[serde(default)]
+    pub timestamp: i64,
+    #[serde(default)]
+    pub taker_fee: Option<i64>,
+    #[serde(default)]
+    pub maker_fee: Option<i64>,
+    #[serde(default)]
+    pub transaction_time: i64,
+}
+
+impl WsTrade {
+    /// Resolves this trade into a fill from `account_index`'s perspective, or
+    /// `None` if the account is not a counterparty.
+    pub fn fill_for(&self, account_index: i64) -> Option<AccountFill> {
+        let is_ask = self.ask_account_id == account_index;
+        let is_bid = self.bid_account_id == account_index;
+        // Not our trade, or a self-trade (nets to zero position change).
+        if is_ask == is_bid {
+            return None;
+        }
+        let is_maker = if is_ask {
+            self.is_maker_ask
+        } else {
+            !self.is_maker_ask
+        };
+        let fee = if is_maker { self.maker_fee } else { self.taker_fee }.unwrap_or(0);
+        Some(AccountFill {
+            market_id: self.market_id,
+            trade_id: self.trade_id,
+            tx_hash: self.tx_hash.clone(),
+            size: self.size.parse().unwrap_or(0.0),
+            price: self.price.parse().unwrap_or(0.0),
+            is_buy: is_bid,
+            is_maker,
+            fee,
+            timestamp: self.timestamp,
+        })
+    }
+}
+
+/// A realized fill from one account's perspective, derived from [`WsTrade`].
+#[derive(Debug, Clone)]
+pub struct AccountFill {
+    pub market_id: i64,
+    pub trade_id: i64,
+    pub tx_hash: String,
+    /// Filled base size (always positive).
+    pub size: f64,
+    pub price: f64,
+    /// `true` if the account bought (was the bid), `false` if it sold.
+    pub is_buy: bool,
+    pub is_maker: bool,
+    /// Fee charged to the account, in micro-USDC (1e-6 USDC).
+    pub fee: i64,
+    pub timestamp: i64,
+}
+
+/// A funding payment entry from an account update.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WsPositionFunding {
+    #[serde(default)]
+    pub timestamp: i64,
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub funding_id: i64,
+    #[serde(default)]
+    pub change: String,
+    #[serde(default)]
+    pub rate: String,
+    #[serde(default)]
+    pub position_size: String,
+    #[serde(default)]
+    pub position_side: String,
+}
+
+/// A public-pool share entry from an account update.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WsPoolShares {
+    #[serde(default)]
+    pub public_pool_index: i64,
+    #[serde(default)]
+    pub shares_amount: i64,
+    #[serde(default)]
+    pub entry_usdc: String,
+}
+
+/// A typed `account_all` snapshot or incremental update.
+///
+/// `trades` and `funding_histories` are keyed by market index (as a string).
+/// On a snapshot ([`is_snapshot`](Self::is_snapshot) is `true`) `trades` carries
+/// recent history; on an update it carries only newly matched fills.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct AccountUpdate {
+    /// `true` for the initial `subscribed/account_all` snapshot, `false` for
+    /// subsequent `update/account_all` deltas.
+    #[serde(skip)]
+    pub is_snapshot: bool,
+    #[serde(default)]
+    pub account: i64,
+    #[serde(default)]
+    pub channel: String,
+    #[serde(default)]
+    pub assets: HashMap<String, WsAsset>,
+    #[serde(default, deserialize_with = "de_lenient_map")]
+    pub positions: HashMap<String, WsPosition>,
+    #[serde(default, deserialize_with = "de_lenient_map_vec")]
+    pub trades: HashMap<String, Vec<WsTrade>>,
+    #[serde(default, deserialize_with = "de_lenient_map_vec")]
+    pub funding_histories: HashMap<String, Vec<WsPositionFunding>>,
+    #[serde(default, deserialize_with = "de_lenient_vec")]
+    pub shares: Vec<WsPoolShares>,
+    #[serde(default)]
+    pub daily_trades_count: i64,
+    #[serde(default)]
+    pub daily_volume: f64,
+    #[serde(default)]
+    pub weekly_trades_count: i64,
+    #[serde(default)]
+    pub weekly_volume: f64,
+    #[serde(default)]
+    pub monthly_trades_count: i64,
+    #[serde(default)]
+    pub monthly_volume: f64,
+    #[serde(default)]
+    pub total_trades_count: i64,
+    #[serde(default)]
+    pub total_volume: f64,
+}
+
+impl AccountUpdate {
+    /// All fills in this update from `account_index`'s perspective, across every
+    /// market, ordered by `trade_id`.
+    pub fn fills_for(&self, account_index: i64) -> Vec<AccountFill> {
+        let mut fills: Vec<AccountFill> = self
+            .trades
+            .values()
+            .flatten()
+            .filter_map(|t| t.fill_for(account_index))
+            .collect();
+        fills.sort_by_key(|f| f.trade_id);
+        fills
+    }
+
+    /// The position in `market_index`, if present.
+    pub fn position(&self, market_index: i64) -> Option<&WsPosition> {
+        self.positions.get(&market_index.to_string())
+    }
 }
 
 /// An async WebSocket client for Lighter's `/stream` endpoint.
@@ -70,6 +325,7 @@ pub struct WsClient {
     order_book_ids: Vec<String>,
     account_ids: Vec<String>,
     order_book_states: HashMap<String, OrderBookState>,
+    account_states: HashMap<String, AccountUpdate>,
 }
 
 impl WsClient {
@@ -96,12 +352,18 @@ impl WsClient {
             order_book_ids: order_book_ids.iter().map(|i| i.to_string()).collect(),
             account_ids: account_ids.iter().map(|i| i.to_string()).collect(),
             order_book_states: HashMap::new(),
+            account_states: HashMap::new(),
         })
     }
 
     /// Returns the latest known state of a subscribed order book, if any.
     pub fn order_book(&self, market_id: &str) -> Option<&OrderBookState> {
         self.order_book_states.get(market_id)
+    }
+
+    /// Returns the latest known account snapshot for a subscribed account, if any.
+    pub fn account(&self, account_id: &str) -> Option<&AccountUpdate> {
+        self.account_states.get(account_id)
     }
 
     /// Reads frames until the next [`WsEvent`], or `Ok(None)` when the stream
@@ -134,12 +396,8 @@ impl WsClient {
                 "update/order_book" => {
                     return Ok(Some(self.handle_order_book(&value, false)?));
                 }
-                "subscribed/account_all" | "update/account_all" => {
-                    return Ok(Some(WsEvent::Account {
-                        account_id: channel_id(&value),
-                        data: value,
-                    }));
-                }
+                "subscribed/account_all" => return Ok(Some(self.handle_account(value, true)?)),
+                "update/account_all" => return Ok(Some(self.handle_account(value, false)?)),
                 _ => continue,
             }
         }
@@ -194,6 +452,21 @@ impl WsClient {
             book: state.clone(),
         })
     }
+
+    fn handle_account(&mut self, value: Value, snapshot: bool) -> Result<WsEvent> {
+        let account_id = channel_id(&value);
+        let mut update: AccountUpdate = serde_json::from_value(value)?;
+        update.is_snapshot = snapshot;
+        // The snapshot is full state; deltas only carry changed sub-objects, so
+        // we expose them as-is rather than merging (positions are authoritative
+        // per message and trades are incremental fills).
+        self.account_states
+            .insert(account_id.clone(), update.clone());
+        Ok(WsEvent::Account {
+            account_id,
+            update: Box::new(update),
+        })
+    }
 }
 
 /// Extracts the id portion of a channel field like `"order_book:1"` → `"1"`.
@@ -225,6 +498,59 @@ fn merge_orders(new_orders: &[WsOrder], existing: &mut Vec<WsOrder>) {
     existing.retain(|o| o.size.parse::<f64>().unwrap_or(0.0) > 0.0);
 }
 
+/// Coerces a JSON value that may be a single object, an array, or null into a
+/// `Vec<T>`, skipping entries that fail to parse. The Lighter docs are
+/// inconsistent about whether per-market collections arrive as a single object
+/// or an array, so we accept both rather than hard-failing the whole update.
+fn lenient_vec<T: DeserializeOwned>(v: Value) -> Vec<T> {
+    match v {
+        Value::Array(items) => items
+            .into_iter()
+            .filter_map(|x| serde_json::from_value(x).ok())
+            .collect(),
+        Value::Null => Vec::new(),
+        other => serde_json::from_value::<T>(other).ok().into_iter().collect(),
+    }
+}
+
+fn de_lenient_vec<'de, D, T>(d: D) -> std::result::Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    Ok(lenient_vec(Value::deserialize(d)?))
+}
+
+fn de_lenient_map<'de, D, T>(d: D) -> std::result::Result<HashMap<String, T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let mut out = HashMap::new();
+    if let Value::Object(map) = Value::deserialize(d)? {
+        for (k, v) in map {
+            if let Ok(t) = serde_json::from_value(v) {
+                out.insert(k, t);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn de_lenient_map_vec<'de, D, T>(d: D) -> std::result::Result<HashMap<String, Vec<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let mut out = HashMap::new();
+    if let Value::Object(map) = Value::deserialize(d)? {
+        for (k, v) in map {
+            out.insert(k, lenient_vec(v));
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +566,86 @@ mod tests {
     fn channel_id_extracts_second_segment() {
         let v: Value = serde_json::from_str(r#"{"channel":"order_book:42"}"#).unwrap();
         assert_eq!(channel_id(&v), "42");
+    }
+
+    fn parse_account(json: &str) -> AccountUpdate {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn account_update_resolves_fills_from_our_perspective() {
+        // Account 10 is the ask (seller) and the maker on this trade.
+        let json = r#"{
+            "account": 10,
+            "channel": "account_all:10",
+            "positions": {
+                "0": {"market_id": 0, "sign": -1, "position": "4.318"}
+            },
+            "trades": {
+                "0": [{
+                    "trade_id": 401,
+                    "tx_hash": "0xabc",
+                    "type": "trade",
+                    "market_id": 0,
+                    "size": "0.5",
+                    "price": "20000.00",
+                    "ask_account_id": 10,
+                    "bid_account_id": 99,
+                    "is_maker_ask": true,
+                    "maker_fee": 28,
+                    "taker_fee": 196,
+                    "timestamp": 1700000000
+                }]
+            },
+            "type": "update/account_all"
+        }"#;
+        let update = parse_account(json);
+        let fills = update.fills_for(10);
+        assert_eq!(fills.len(), 1);
+        let f = &fills[0];
+        assert_eq!(f.market_id, 0);
+        assert!(!f.is_buy, "account was the ask side (seller)");
+        assert!(f.is_maker, "is_maker_ask=true and we are the ask");
+        assert_eq!(f.fee, 28, "maker fee applies");
+        assert!((f.size - 0.5).abs() < 1e-9);
+        assert!((f.price - 20000.0).abs() < 1e-9);
+
+        // The counterparty sees the mirror image: a taker buy.
+        let other = update.fills_for(99);
+        assert_eq!(other.len(), 1);
+        assert!(other[0].is_buy);
+        assert!(!other[0].is_maker);
+        assert_eq!(other[0].fee, 196);
+
+        // An uninvolved account has no fills.
+        assert!(update.fills_for(123).is_empty());
+
+        let pos = update.position(0).unwrap();
+        assert!((pos.signed_size() - (-4.318)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn account_update_accepts_single_object_collections() {
+        // Docs sometimes deliver per-market collections as a single object
+        // rather than an array; we must accept both.
+        let json = r#"{
+            "account": 7,
+            "channel": "account_all:7",
+            "trades": {
+                "1": {
+                    "trade_id": 1, "market_id": 1, "size": "1", "price": "10",
+                    "ask_account_id": 7, "bid_account_id": 8, "is_maker_ask": false
+                }
+            },
+            "shares": {"public_pool_index": 1, "shares_amount": 100, "entry_usdc": "1000"},
+            "type": "subscribed/account_all"
+        }"#;
+        let update = parse_account(json);
+        let fills = update.fills_for(7);
+        assert_eq!(fills.len(), 1);
+        // is_maker_ask=false and we are the ask → we are the taker, selling.
+        assert!(!fills[0].is_maker && !fills[0].is_buy);
+        assert_eq!(update.shares.len(), 1);
     }
 
     #[test]
