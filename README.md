@@ -1,6 +1,6 @@
-# lighter-rust
+# lighters
 
-A native Rust signer and transaction client for the [Lighter](https://lighter.xyz)
+A native Rust client for the [Lighter](https://lighter.xyz)
 exchange. It is a from-scratch port of the official Go SDK
 ([`lighter-go`](../lighter-go)) and produces **byte-identical** transaction
 hashes and Schnorr signatures, so payloads it signs are accepted by the same
