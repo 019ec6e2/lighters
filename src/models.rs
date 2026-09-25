@@ -338,14 +338,31 @@ pub struct OrderBookDetail {
     pub size_decimals: i64,
     #[serde(default)]
     pub price_decimals: i64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_f64_lenient")]
     pub last_trade_price: f64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_f64_lenient")]
     pub daily_quote_token_volume: f64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_f64_lenient")]
     pub daily_price_change: f64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_f64_lenient")]
     pub open_interest: f64,
+}
+
+/// Accepts a JSON number or a numeric string (spot markets send some stats as
+/// strings, e.g. `"open_interest": "0.000000"`). Unparseable values become 0.
+fn de_f64_lenient<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<f64, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        Num(f64),
+        Str(String),
+        Null(()),
+    }
+    Ok(match NumOrStr::deserialize(d)? {
+        NumOrStr::Num(n) => n,
+        NumOrStr::Str(s) => s.parse().unwrap_or(0.0),
+        NumOrStr::Null(()) => 0.0,
+    })
 }
 
 /// Response to `GET /api/v1/orderBookDetails`.
@@ -609,5 +626,27 @@ mod tests {
         assert_eq!(parsed.candles[0].timestamp, 1000);
         assert_eq!(parsed.candles[0].close, "1.5");
         assert_eq!(parsed.candles[0].quote_volume, "15");
+    }
+
+    #[test]
+    fn order_book_details_accept_numeric_strings() {
+        // Spot markets send `open_interest` as a string; perps send numbers.
+        let json = r#"{
+            "code": 200,
+            "order_book_details": [
+                {"symbol": "ETH", "market_id": 0, "last_trade_price": 2680.5,
+                 "daily_quote_token_volume": 100, "daily_price_change": -1.5,
+                 "open_interest": 12.5}
+            ],
+            "spot_order_book_details": [
+                {"symbol": "ETH/USDC", "market_id": 2048, "last_trade_price": 2680.5,
+                 "open_interest": "0.000000", "daily_price_change": null}
+            ]
+        }"#;
+        let parsed: OrderBookDetails = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.order_book_details[0].open_interest, 12.5);
+        assert_eq!(parsed.order_book_details[0].daily_quote_token_volume, 100.0);
+        assert_eq!(parsed.spot_order_book_details[0].open_interest, 0.0);
+        assert_eq!(parsed.spot_order_book_details[0].daily_price_change, 0.0);
     }
 }
