@@ -14,8 +14,8 @@
 //! emits [`WsEvent::Reconnected`] before fresh snapshots replay.
 //!
 //! ```no_run
-//! # async fn run() -> lighter::Result<()> {
-//! use lighter::ws::{WsClient, WsEvent};
+//! # async fn run() -> lighters::Result<()> {
+//! use lighters::ws::{WsClient, WsEvent};
 //!
 //! let mut ws = WsClient::connect("mainnet.zklighter.elliot.ai", &[0], &[]).await?;
 //! while let Some(event) = ws.next_event().await? {
