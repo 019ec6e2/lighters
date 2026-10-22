@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
-use lighter::attributes::{AttributeMap, TxAttributes};
-use lighter::transactions::*;
+use lighters::attributes::{AttributeMap, TxAttributes};
+use lighters::transactions::*;
 use serde::Deserialize;
 
 const CHAIN_ID: u32 = 304;

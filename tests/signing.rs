@@ -3,7 +3,7 @@
 //! signature must match byte-for-byte, and freshly produced signatures must
 //! verify.
 
-use lighter::signer::{self, KeyManager};
+use lighters::signer::{self, KeyManager};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
