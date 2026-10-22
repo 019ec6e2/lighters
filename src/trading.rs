@@ -20,7 +20,9 @@ use crate::constants::{
 };
 use crate::error::{Error, Result};
 use crate::hash::{bytes_to_field_elems, fp5_to_le_bytes, hash_to_fp5};
-use crate::models::{OrderBookDetail, OrderBookOrders, RespSendTx, RespSendTxBatch};
+use crate::models::{
+    Event, EventsQuery, OrderBookDetail, OrderBookOrders, RespSendTx, RespSendTxBatch,
+};
 use crate::nonce::{NonceManager, NonceStrategy};
 use crate::rest::RestClient;
 use crate::signer::KeyManager;
@@ -59,7 +61,7 @@ pub struct TradeOpts {
 /// Parameters for [`TradingClient::create_order`].
 #[derive(Debug, Clone)]
 pub struct OrderParams {
-    pub market_index: i16,
+    pub market_index: i64,
     pub client_order_index: i64,
     /// Base size in market ticks.
     pub base_amount: i64,
@@ -100,7 +102,7 @@ impl Default for OrderParams {
 /// are `round(human × 10^decimals)`.
 #[derive(Debug, Clone)]
 pub struct MarketConfig {
-    pub market_id: i16,
+    pub market_id: i64,
     pub symbol: String,
     pub market_type: String,
     pub price_decimals: i64,
@@ -112,7 +114,7 @@ pub struct MarketConfig {
 impl MarketConfig {
     fn from_detail(d: &OrderBookDetail) -> Self {
         MarketConfig {
-            market_id: d.market_id as i16,
+            market_id: d.market_id,
             symbol: d.symbol.clone(),
             market_type: d.market_type.clone(),
             price_decimals: d.price_decimals,
@@ -150,7 +152,7 @@ pub struct TradingClient {
     chain_id: u32,
     signers: HashMap<u8, KeyManager>,
     nonce_manager: NonceManager,
-    markets: RwLock<HashMap<i16, MarketConfig>>,
+    markets: RwLock<HashMap<i64, MarketConfig>>,
 }
 
 impl TradingClient {
@@ -249,7 +251,7 @@ impl TradingClient {
 
     /// Returns the cached [`MarketConfig`] for `market_index`, fetching it from
     /// `orderBookDetails` on first use.
-    pub async fn market_config(&self, market_index: i16) -> Result<MarketConfig> {
+    pub async fn market_config(&self, market_index: i64) -> Result<MarketConfig> {
         if let Some(cfg) = self.markets.read().unwrap().get(&market_index).cloned() {
             return Ok(cfg);
         }
@@ -289,13 +291,51 @@ impl TradingClient {
         Ok(())
     }
 
+    /// Active binary-options events for a series `tag` (e.g. `"btc-updown-15m"`),
+    /// soonest first. Caches each market's decimals so the human-unit helpers
+    /// work for binary-options market ids.
+    pub async fn bo_active_events(&self, tag: &str) -> Result<Vec<Event>> {
+        let resp = self
+            .rest
+            .events(&EventsQuery {
+                tag: Some(tag.to_string()),
+                active: Some(true),
+                sort: Some("start_at".to_string()),
+                order: Some("asc".to_string()),
+                limit: Some(100),
+                cursor: None,
+            })
+            .await?;
+        self.register_bo_markets(&resp.events);
+        Ok(resp.events)
+    }
+
+    /// Caches [`MarketConfig`]s for the order books of `events`.
+    pub fn register_bo_markets(&self, events: &[Event]) {
+        let mut cache = self.markets.write().unwrap();
+        for ob in events.iter().flat_map(|e| e.order_books.iter()) {
+            cache.insert(
+                ob.market_id,
+                MarketConfig {
+                    market_id: ob.market_id,
+                    symbol: ob.symbol.clone(),
+                    market_type: ob.market_type.clone(),
+                    price_decimals: ob.price_decimals,
+                    size_decimals: ob.size_decimals,
+                    min_base_amount: ob.min_base_amount.clone(),
+                    min_quote_amount: ob.min_quote_amount.clone(),
+                },
+            );
+        }
+    }
+
     /// Converts a human price to integer price ticks for `market_index`.
-    pub async fn price_to_ticks(&self, market_index: i16, price: f64) -> Result<u32> {
+    pub async fn price_to_ticks(&self, market_index: i64, price: f64) -> Result<u32> {
         Ok(self.market_config(market_index).await?.price_to_ticks(price))
     }
 
     /// Converts a human base size to integer base-amount ticks.
-    pub async fn size_to_ticks(&self, market_index: i16, size: f64) -> Result<i64> {
+    pub async fn size_to_ticks(&self, market_index: i64, size: f64) -> Result<i64> {
         Ok(self.market_config(market_index).await?.size_to_ticks(size))
     }
 
@@ -304,7 +344,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_limit_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         size: f64,
         price: f64,
@@ -338,7 +378,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_market_order_value(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         size: f64,
         avg_price: f64,
@@ -368,7 +408,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_market_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         avg_execution_price: u32,
@@ -403,7 +443,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_market_order_limited_slippage(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         max_slippage: f64,
@@ -431,7 +471,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_market_order_if_slippage(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         max_slippage: f64,
@@ -472,7 +512,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_market_order_quote_amount(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         quote_amount: f64,
         max_slippage: f64,
@@ -511,7 +551,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_tp_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         trigger_price: u32,
@@ -539,7 +579,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_tp_limit_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         trigger_price: u32,
@@ -567,7 +607,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_sl_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         trigger_price: u32,
@@ -595,7 +635,7 @@ impl TradingClient {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_sl_limit_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         trigger_price: u32,
@@ -624,7 +664,7 @@ impl TradingClient {
         &self,
         order_type: u8,
         time_in_force: u8,
-        market_index: i16,
+        market_index: i64,
         client_order_index: i64,
         base_amount: i64,
         trigger_price: u32,
@@ -693,7 +733,7 @@ impl TradingClient {
     /// Signs and submits a cancel-order transaction.
     pub async fn cancel_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         order_index: i64,
         opts: &TradeOpts,
     ) -> Result<(CancelOrder, RespSendTx)> {
@@ -718,7 +758,7 @@ impl TradingClient {
         &self,
         time_in_force: u8,
         time_ms: i64,
-        market_index: Option<i16>,
+        market_index: Option<i64>,
         opts: &TradeOpts,
     ) -> Result<(CancelAllOrders, RespSendTx)> {
         let (api_key_index, nonce) = self.resolve(opts).await?;
@@ -743,7 +783,7 @@ impl TradingClient {
     /// Signs and submits a modify-order transaction.
     pub async fn modify_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         order_index: i64,
         base_amount: i64,
         price: u32,
@@ -798,7 +838,7 @@ impl TradingClient {
     /// initial-margin fraction `10_000 / leverage`, matching the Python client.
     pub async fn update_leverage(
         &self,
-        market_index: i16,
+        market_index: i64,
         margin_mode: u8,
         leverage: u16,
         opts: &TradeOpts,
@@ -859,7 +899,7 @@ impl TradingClient {
     /// USDC value (scaled by 1e6 internally).
     pub async fn update_margin(
         &self,
-        market_index: i16,
+        market_index: i64,
         usdc_amount: f64,
         direction: u8,
         opts: &TradeOpts,
@@ -1121,13 +1161,13 @@ impl TradingClient {
     // --- reads & helpers -----------------------------------------------------
 
     /// Fetches resting bids/asks for a market (`limit` in 1..=100).
-    pub async fn order_book_orders(&self, market_index: i16, limit: u32) -> Result<OrderBookOrders> {
+    pub async fn order_book_orders(&self, market_index: i64, limit: u32) -> Result<OrderBookOrders> {
         self.rest.order_book_orders(market_index, limit).await
     }
 
     /// Best price (in ticks) for the given side: top bid when selling
     /// (`is_ask`), top ask when buying.
-    pub async fn best_price(&self, market_index: i16, is_ask: bool) -> Result<u64> {
+    pub async fn best_price(&self, market_index: i64, is_ask: bool) -> Result<u64> {
         let book = self.rest.order_book_orders(market_index, 1).await?;
         best_price_from(&book, is_ask)
     }
@@ -1141,7 +1181,7 @@ impl TradingClient {
     /// markets. Signs a short-lived auth token internally.
     pub async fn active_orders(
         &self,
-        market_index: Option<i16>,
+        market_index: Option<i64>,
     ) -> Result<crate::models::Orders> {
         let api_key_index = self.default_api_key_index();
         let deadline = now_ms() / 1000 + 10 * 60;
@@ -1154,7 +1194,7 @@ impl TradingClient {
     /// Inactive (historical) orders for this account.
     pub async fn inactive_orders(
         &self,
-        market_index: Option<i16>,
+        market_index: Option<i64>,
         limit: Option<u32>,
         cursor: Option<&str>,
     ) -> Result<crate::models::Orders> {
@@ -1166,7 +1206,7 @@ impl TradingClient {
     /// Market details with live stats. `None` returns all markets.
     pub async fn order_book_details(
         &self,
-        market_index: Option<i16>,
+        market_index: Option<i64>,
     ) -> Result<crate::models::OrderBookDetails> {
         self.rest.order_book_details(market_index).await
     }
@@ -1174,7 +1214,7 @@ impl TradingClient {
     /// List of markets / order books. `None` returns all markets.
     pub async fn order_books(
         &self,
-        market_index: Option<i16>,
+        market_index: Option<i64>,
     ) -> Result<crate::models::OrderBooks> {
         self.rest.order_books(market_index).await
     }
@@ -1182,7 +1222,7 @@ impl TradingClient {
     /// Recent public trades for a market.
     pub async fn recent_trades(
         &self,
-        market_index: i16,
+        market_index: i64,
         limit: u32,
     ) -> Result<crate::models::Trades> {
         self.rest.recent_trades(market_index, limit).await
@@ -1191,7 +1231,7 @@ impl TradingClient {
     /// Trades for a market, optionally filtered to an account.
     pub async fn trades(
         &self,
-        market_index: i16,
+        market_index: i64,
         limit: u32,
         account_index: Option<i64>,
     ) -> Result<crate::models::Trades> {
@@ -1201,7 +1241,7 @@ impl TradingClient {
     /// OHLCV candles for a market.
     pub async fn candles(
         &self,
-        market_index: i16,
+        market_index: i64,
         resolution: &str,
         start_timestamp: i64,
         end_timestamp: i64,
@@ -1215,7 +1255,7 @@ impl TradingClient {
     /// Historical funding for a market.
     pub async fn fundings(
         &self,
-        market_index: i16,
+        market_index: i64,
         resolution: &str,
         start_timestamp: i64,
         end_timestamp: i64,
@@ -1606,7 +1646,7 @@ fn acceptable_price(ideal: u64, max_slippage: f64, is_ask: bool) -> u32 {
 
 /// Builds the [`OrderParams`] for an IOC market order at `price`.
 fn market_order_params(
-    market_index: i16,
+    market_index: i64,
     client_order_index: i64,
     base_amount: i64,
     price: u32,

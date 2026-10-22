@@ -181,6 +181,29 @@ let size_ticks = client.size_to_ticks(0, 1.5).await?;
 
 `create_market_order_value` is the IOC-market equivalent in human units.
 
+### Binary options (Up/Down markets)
+
+Binary-options markets use the same create / modify / cancel transactions.
+Market ids are `i64` and no longer fall in the legacy perps (`0..=254`) or spot
+(`2048..=4094`) ranges, so validation follows upstream `lighter-go` (any id in
+`0..2^48` except the nil index `255`). These markets are absent from
+`orderBookDetails`; discover them through `events`:
+
+```rust
+// Active BTC 15m windows, soonest first; caches each market's decimals.
+let events = client.bo_active_events("btc-updown-15m").await?;
+let ob = &events[0].order_books[0];
+
+// Buy 10 Up shares at 0.51 (is_ask = false → Up, true → Down).
+let (order, _resp) = client
+    .create_limit_order(ob.market_id, 1, 10.0, 0.51, false, GOOD_TILL_TIME, false, &TradeOpts::default())
+    .await?;
+```
+
+Positions are reported in `DetailedAccount::bo_positions` (`sign` `1` = Up,
+`-1` = Down). Reduce-only, stop and TWAP orders are rejected by the exchange on
+these markets.
+
 ### Ethereum L1 signing (`eth` feature)
 
 `transfer`, `change_pub_key`, and `approve_integrator` require an L1

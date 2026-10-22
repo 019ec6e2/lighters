@@ -145,7 +145,7 @@ fn now_unix_millis() -> i64 {
 /// Order parameters shared by create / grouped-order requests.
 #[derive(Debug, Clone)]
 pub struct OrderReq {
-    pub market_index: i16,
+    pub market_index: i64,
     pub client_order_index: i64,
     pub base_amount: i64,
     pub price: u32,
@@ -241,7 +241,7 @@ impl TxClient {
     /// Signs a cancel-order transaction.
     pub fn cancel_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         index: i64,
         opts: &TransactOpts,
     ) -> Result<CancelOrder> {
@@ -287,7 +287,7 @@ impl TxClient {
     /// Signs a modify-order transaction.
     pub fn modify_order(
         &self,
-        market_index: i16,
+        market_index: i64,
         index: i64,
         base_amount: i64,
         price: u32,
@@ -399,7 +399,7 @@ impl TxClient {
     /// Signs an update-leverage transaction.
     pub fn update_leverage(
         &self,
-        market_index: i16,
+        market_index: i64,
         initial_margin_fraction: u16,
         margin_mode: u8,
         opts: &TransactOpts,
@@ -424,7 +424,7 @@ impl TxClient {
     /// Signs an update-margin transaction.
     pub fn update_margin(
         &self,
-        market_index: i16,
+        market_index: i64,
         usdc_amount: i64,
         direction: u8,
         opts: &TransactOpts,

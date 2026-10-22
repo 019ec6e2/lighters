@@ -86,11 +86,16 @@ pub const MIN_API_KEY_INDEX: u8 = 0;
 pub const MAX_API_KEY_INDEX: u8 = 254; // (1 << 8) - 2
 pub const NIL_API_KEY_INDEX: u8 = 255; // MaxApiKeyIndex + 1
 
-pub const MIN_PERPS_MARKET_INDEX: i16 = 0;
-pub const MAX_PERPS_MARKET_INDEX: i16 = 254; // (1 << 8) - 2
-pub const NIL_MARKET_INDEX: i16 = 255;
-pub const MIN_SPOT_MARKET_INDEX: i16 = 2048; // (1 << 11)
-pub const MAX_SPOT_MARKET_INDEX: i16 = 4094; // (1 << 12) - 2
+// Market ids are no longer range-partitioned by type (perps / spot / binary
+// options); the market type cannot be derived from the id.
+pub const MIN_MARKET_INDEX: i64 = 0;
+pub const MAX_MARKET_INDEX: i64 = (1 << 48) - 1;
+pub const MIN_PERPS_MARKET_INDEX: i64 = 0;
+pub const NIL_MARKET_INDEX: i64 = 255;
+
+pub const MARKET_TYPE_PERPS: u8 = 0;
+pub const MARKET_TYPE_SPOT: u8 = 1;
+pub const MARKET_TYPE_BINARY_OPTIONS: u8 = 2;
 
 pub const NIL_INTEGRATOR_INDEX: i64 = 0;
 pub const NIL_INTEGRATOR_TAKER_FEE: u32 = 0;
