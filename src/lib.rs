@@ -15,13 +15,13 @@
 //! # Quick start
 //!
 //! ```no_run
-//! use lighter::{TxClient, TransactOpts, transactions::TxInfo};
+//! use lighters::{TxClient, TransactOpts, transactions::TxInfo};
 //!
-//! # fn main() -> lighter::Result<()> {
+//! # fn main() -> lighters::Result<()> {
 //! let client = TxClient::new("0x...", /*account*/ 3, /*api key*/ 0, /*chain*/ 304)?;
 //! let opts = TransactOpts { nonce: Some(0), ..Default::default() };
 //! let order = client.create_order(
-//!     lighter::OrderReq {
+//!     lighters::OrderReq {
 //!         market_index: 0,
 //!         client_order_index: 1,
 //!         base_amount: 100,
