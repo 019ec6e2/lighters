@@ -398,14 +398,14 @@ impl WsClient {
     /// `/stream` path is appended automatically. At least one subscription is
     /// required. Subscriptions are sent once the server's `connected` frame
     /// arrives (driven by [`next_event`](Self::next_event)).
-    pub async fn connect(host: &str, order_book_ids: &[i16], account_ids: &[i64]) -> Result<Self> {
+    pub async fn connect(host: &str, order_book_ids: &[i64], account_ids: &[i64]) -> Result<Self> {
         Self::connect_with_config(host, order_book_ids, account_ids, WsConfig::default()).await
     }
 
     /// Connects with an explicit [`WsConfig`].
     pub async fn connect_with_config(
         host: &str,
-        order_book_ids: &[i16],
+        order_book_ids: &[i64],
         account_ids: &[i64],
         config: WsConfig,
     ) -> Result<Self> {

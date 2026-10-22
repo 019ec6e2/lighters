@@ -249,6 +249,162 @@ pub struct DetailedAccount {
     pub status: i64,
     #[serde(default)]
     pub positions: Vec<AccountPosition>,
+    #[serde(default)]
+    pub bo_positions: Vec<BoPosition>,
+}
+
+/// A binary-options position (`bo_positions` entry).
+#[derive(Debug, Clone, Deserialize)]
+pub struct BoPosition {
+    #[serde(default)]
+    pub market_id: i64,
+    /// `1` holds Up, `-1` holds Down.
+    #[serde(default)]
+    pub sign: i64,
+    /// Shares held, positive magnitude.
+    #[serde(default)]
+    pub size: String,
+    #[serde(default)]
+    pub entry_quote: String,
+    /// Average price paid for the held side (Down price when `sign = -1`).
+    #[serde(default)]
+    pub avg_entry_price: String,
+}
+
+// ---------------------------------------------------------------------------
+// Binary options (events)
+// ---------------------------------------------------------------------------
+
+/// Binary-options outcome codes (`outcome` on a market).
+pub const BO_OUTCOME_PENDING: i64 = 0;
+pub const BO_OUTCOME_DOWN: i64 = 1;
+pub const BO_OUTCOME_UP: i64 = 2;
+
+/// Live stats attached to a binary-options order book.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct BoMarketStats {
+    #[serde(default)]
+    pub mid_price: String,
+    #[serde(default)]
+    pub best_ask_price: String,
+    #[serde(default)]
+    pub best_bid_price: String,
+    #[serde(default)]
+    pub last_trade_price: String,
+    #[serde(default)]
+    pub open_interest: String,
+    #[serde(default)]
+    pub lifetime_quote_token_volume: f64,
+}
+
+/// A binary-options order book as returned inside `events`.
+///
+/// Fee fields are the market maxima (e.g. `"1.0000"` = 1%); the effective fee
+/// is `taker_fee × bo_fee_rate × size × P × (1 − P)`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BoOrderBook {
+    pub symbol: String,
+    pub market_id: i64,
+    #[serde(default)]
+    pub market_type: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub taker_fee: String,
+    #[serde(default)]
+    pub maker_fee: String,
+    #[serde(default)]
+    pub min_base_amount: String,
+    #[serde(default)]
+    pub min_quote_amount: String,
+    #[serde(default)]
+    pub size_decimals: i64,
+    #[serde(default)]
+    pub price_decimals: i64,
+    /// Trading window, unix ms. `0` start means tradable from listing.
+    #[serde(default)]
+    pub start_timestamp: i64,
+    #[serde(default)]
+    pub end_timestamp: i64,
+    #[serde(default)]
+    pub outcome: i64,
+    #[serde(default)]
+    pub settlement_cap: i64,
+    #[serde(default)]
+    pub settlement_price: i64,
+    #[serde(default)]
+    pub default_price: i64,
+    #[serde(default)]
+    pub is_frozen: bool,
+    #[serde(default)]
+    pub open_interest: String,
+    #[serde(default)]
+    pub stats: BoMarketStats,
+}
+
+/// Series metadata on an event (`metadata`).
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct EventMetadata {
+    #[serde(default)]
+    pub duration: String,
+    #[serde(default)]
+    pub feed_id: String,
+    #[serde(default)]
+    pub market_id: i64,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(rename = "type", default)]
+    pub kind: String,
+}
+
+/// One binary-options event (`GET /api/v1/events`). Up/Down series have one
+/// order book per event.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Event {
+    pub event_id: i64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub tag: String,
+    /// Observation window, unix ms.
+    #[serde(default)]
+    pub start_at: i64,
+    #[serde(default)]
+    pub end_at: i64,
+    #[serde(default)]
+    pub metadata: EventMetadata,
+    #[serde(default)]
+    pub order_books: Vec<BoOrderBook>,
+}
+
+/// Response to `GET /api/v1/events`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Events {
+    #[serde(default)]
+    pub code: i32,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub next_cursor: Option<i64>,
+    #[serde(default)]
+    pub events: Vec<Event>,
+}
+
+/// Query for `GET /api/v1/events`.
+#[derive(Debug, Clone, Default)]
+pub struct EventsQuery {
+    pub tag: Option<String>,
+    pub active: Option<bool>,
+    /// e.g. `"start_at"`.
+    pub sort: Option<String>,
+    /// `"asc"` / `"desc"`.
+    pub order: Option<String>,
+    pub limit: Option<u32>,
+    pub cursor: Option<i64>,
 }
 
 /// Response to `GET /api/v1/account`.
@@ -577,6 +733,78 @@ mod tests {
         assert_eq!(ticks("100").unwrap(), 100);
         assert_eq!(ticks("0.00010000").unwrap(), 10000);
         assert!(ticks("").is_err());
+    }
+
+    #[test]
+    fn events_deserialize_binary_options() {
+        let json = r#"{
+            "code": 200,
+            "next_cursor": 491,
+            "events": [{
+                "event_id": 487,
+                "title": "BTC Up or Down",
+                "tag": "btc-updown-15m",
+                "event_kind": "recurrent",
+                "start_at": 1792637100000,
+                "end_at": 1792638000000,
+                "metadata": {
+                    "duration": "15m",
+                    "feed_id": "0x0002ee6757e8822c00d273bc340fc24c9cafe123a4ff2ea1dbdb31944bc7d95f",
+                    "market_id": 4587,
+                    "provider": "chainlink",
+                    "symbol": "btc",
+                    "type": "updown",
+                    "underlying_market_id": 1
+                },
+                "order_books": [{
+                    "symbol": "BTC-UPDOWN-15M-1792637100",
+                    "market_id": 4587,
+                    "market_type": "binary_options",
+                    "status": "active",
+                    "taker_fee": "1.0000",
+                    "maker_fee": "0.0000",
+                    "min_base_amount": "5.0000",
+                    "min_quote_amount": "0.000001",
+                    "size_decimals": 4,
+                    "price_decimals": 2,
+                    "start_timestamp": 1792629900000,
+                    "end_timestamp": 1792638000000,
+                    "outcome": 0,
+                    "settlement_cap": 100,
+                    "settlement_price": 0,
+                    "default_price": 50,
+                    "is_frozen": false,
+                    "open_interest": "6.0000",
+                    "stats": {
+                        "mid_price": "0.63",
+                        "best_ask_price": "0.64",
+                        "best_bid_price": "0.61",
+                        "last_trade_price": "0.65",
+                        "lifetime_quote_token_volume": 6.55
+                    }
+                }]
+            }]
+        }"#;
+        let r: Events = serde_json::from_str(json).unwrap();
+        assert_eq!(r.next_cursor, Some(491));
+        let e = &r.events[0];
+        assert_eq!(e.metadata.kind, "updown");
+        assert_eq!(e.metadata.market_id, 4587);
+        let ob = &e.order_books[0];
+        assert_eq!(ob.market_id, 4587);
+        assert_eq!(ob.settlement_cap, 100);
+        assert_eq!(ob.outcome, BO_OUTCOME_PENDING);
+        assert_eq!(ob.stats.best_ask_price, "0.64");
+    }
+
+    #[test]
+    fn account_deserializes_bo_positions() {
+        let json = r#"{"code":200,"accounts":[{"index":3,"bo_positions":[
+            {"market_id":4206,"sign":-1,"size":"100.0000","entry_quote":"49.000000","avg_entry_price":"0.49"}
+        ]}]}"#;
+        let r: DetailedAccounts = serde_json::from_str(json).unwrap();
+        let p = &r.accounts[0].bo_positions[0];
+        assert_eq!((p.market_id, p.sign, p.size.as_str()), (4206, -1, "100.0000"));
     }
 
     #[test]

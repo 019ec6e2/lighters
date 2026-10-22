@@ -8,7 +8,8 @@ use serde::de::DeserializeOwned;
 
 use crate::error::{Error, Result};
 use crate::models::{
-    AccountApiKeys, Candles, DetailedAccounts, EnrichedTx, Fundings, FundingRates, NextNonce,
+    AccountApiKeys, Candles, DetailedAccounts, EnrichedTx, Events, EventsQuery, Fundings,
+    FundingRates, NextNonce,
     OrderBookDetails, OrderBookOrders, OrderBooks, Orders, RespSendTx, RespSendTxBatch,
     SystemConfig, Trades, Txs, CODE_OK,
 };
@@ -119,7 +120,7 @@ impl RestClient {
     /// `GET /api/v1/orderBookOrders` — resting bids/asks for a market.
     ///
     /// `limit` must be 1..=100.
-    pub async fn order_book_orders(&self, market_index: i16, limit: u32) -> Result<OrderBookOrders> {
+    pub async fn order_book_orders(&self, market_index: i64, limit: u32) -> Result<OrderBookOrders> {
         let resp: OrderBookOrders = self
             .get_json(
                 "api/v1/orderBookOrders",
@@ -156,7 +157,7 @@ impl RestClient {
         &self,
         auth: &str,
         account_index: i64,
-        market_id: Option<i16>,
+        market_id: Option<i64>,
     ) -> Result<Orders> {
         let mut query = vec![("account_index", account_index.to_string())];
         if let Some(m) = market_id {
@@ -173,7 +174,7 @@ impl RestClient {
     pub async fn account_inactive_orders(
         &self,
         account_index: i64,
-        market_id: Option<i16>,
+        market_id: Option<i64>,
         limit: Option<u32>,
         cursor: Option<&str>,
     ) -> Result<Orders> {
@@ -196,7 +197,7 @@ impl RestClient {
 
     /// `GET /api/v1/orderBookDetails` — market details with live stats.
     /// `market_id` of `None` returns all markets.
-    pub async fn order_book_details(&self, market_id: Option<i16>) -> Result<OrderBookDetails> {
+    pub async fn order_book_details(&self, market_id: Option<i64>) -> Result<OrderBookDetails> {
         let query = market_id
             .map(|m| vec![("market_id", m.to_string())])
             .unwrap_or_default();
@@ -206,7 +207,7 @@ impl RestClient {
     }
 
     /// `GET /api/v1/orderBooks` — list of markets / order books.
-    pub async fn order_books(&self, market_id: Option<i16>) -> Result<OrderBooks> {
+    pub async fn order_books(&self, market_id: Option<i64>) -> Result<OrderBooks> {
         let query = market_id
             .map(|m| vec![("market_id", m.to_string())])
             .unwrap_or_default();
@@ -215,8 +216,36 @@ impl RestClient {
         Ok(resp)
     }
 
+    /// `GET /api/v1/events` — binary-options events and their order books.
+    /// Binary-options markets are absent from `orderBooks` / `orderBookDetails`
+    /// listings; discover them here.
+    pub async fn events(&self, q: &EventsQuery) -> Result<Events> {
+        let mut query = Vec::new();
+        if let Some(t) = &q.tag {
+            query.push(("tag", t.clone()));
+        }
+        if let Some(a) = q.active {
+            query.push(("active", a.to_string()));
+        }
+        if let Some(s) = &q.sort {
+            query.push(("sort", s.clone()));
+        }
+        if let Some(o) = &q.order {
+            query.push(("order", o.clone()));
+        }
+        if let Some(l) = q.limit {
+            query.push(("limit", l.to_string()));
+        }
+        if let Some(c) = q.cursor {
+            query.push(("cursor", c.to_string()));
+        }
+        let resp: Events = self.get_json("api/v1/events", &query).await?;
+        check_code(resp.code, &resp.message)?;
+        Ok(resp)
+    }
+
     /// `GET /api/v1/recentTrades` — recent public trades for a market.
-    pub async fn recent_trades(&self, market_id: i16, limit: u32) -> Result<Trades> {
+    pub async fn recent_trades(&self, market_id: i64, limit: u32) -> Result<Trades> {
         let resp: Trades = self
             .get_json(
                 "api/v1/recentTrades",
@@ -233,7 +262,7 @@ impl RestClient {
     /// `GET /api/v1/trades` — trades for a market with optional account filter.
     pub async fn trades(
         &self,
-        market_id: i16,
+        market_id: i64,
         limit: u32,
         account_index: Option<i64>,
     ) -> Result<Trades> {
@@ -252,7 +281,7 @@ impl RestClient {
     /// `GET /api/v1/candles` — OHLCV candles for a market.
     pub async fn candles(
         &self,
-        market_id: i16,
+        market_id: i64,
         resolution: &str,
         start_timestamp: i64,
         end_timestamp: i64,
@@ -277,7 +306,7 @@ impl RestClient {
     /// `GET /api/v1/fundings` — historical funding for a market.
     pub async fn fundings(
         &self,
-        market_id: i16,
+        market_id: i64,
         resolution: &str,
         start_timestamp: i64,
         end_timestamp: i64,

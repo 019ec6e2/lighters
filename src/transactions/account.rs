@@ -156,7 +156,7 @@ impl TxInfo for CreateSubAccount {
 pub struct UpdateLeverage {
     pub account_index: i64,
     pub api_key_index: u8,
-    pub market_index: i16,
+    pub market_index: i64,
     pub initial_margin_fraction: u16,
     pub margin_mode: u8,
     pub expired_at: i64,
@@ -180,7 +180,10 @@ impl TxInfo for UpdateLeverage {
         }
         check_account_index(self.account_index, MAX_ACCOUNT_INDEX)?;
         check_api_key_index(self.api_key_index)?;
-        if self.market_index == NIL_MARKET_INDEX {
+        if self.market_index < MIN_PERPS_MARKET_INDEX
+            || self.market_index == NIL_MARKET_INDEX
+            || self.market_index > MAX_MARKET_INDEX
+        {
             return Err(Error::InvalidMarketIndex);
         }
         if self.margin_mode != CROSS_MARGIN && self.margin_mode != ISOLATED_MARGIN {
@@ -234,7 +237,7 @@ impl TxInfo for UpdateLeverage {
 pub struct UpdateMargin {
     pub account_index: i64,
     pub api_key_index: u8,
-    pub market_index: i16,
+    pub market_index: i64,
     #[serde(rename = "USDCAmount")]
     pub usdc_amount: i64,
     pub direction: u8,
@@ -259,7 +262,10 @@ impl TxInfo for UpdateMargin {
         }
         check_account_index(self.account_index, MAX_ACCOUNT_INDEX)?;
         check_api_key_index(self.api_key_index)?;
-        if self.market_index < MIN_PERPS_MARKET_INDEX || self.market_index > MAX_PERPS_MARKET_INDEX {
+        if self.market_index < MIN_PERPS_MARKET_INDEX
+            || self.market_index == NIL_MARKET_INDEX
+            || self.market_index > MAX_MARKET_INDEX
+        {
             return Err(Error::InvalidMarketIndex);
         }
         if self.usdc_amount == 0 || self.usdc_amount > MAX_TRANSFER_AMOUNT {

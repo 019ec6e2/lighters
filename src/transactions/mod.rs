@@ -98,7 +98,7 @@ pub fn to_signed<T: TxInfo>(tx: &T, chain_id: u32) -> Result<SignedTransaction> 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct OrderInfo {
-    pub market_index: i16,
+    pub market_index: i64,
     pub client_order_index: i64,
     pub base_amount: i64,
     pub price: u32,
@@ -172,12 +172,13 @@ pub(crate) fn check_expired_at(expired_at: i64) -> Result<()> {
     }
 }
 
-pub(crate) fn is_spot_market(m: i16) -> bool {
-    m >= MIN_SPOT_MARKET_INDEX && m <= MAX_SPOT_MARKET_INDEX
-}
-
-pub(crate) fn is_perps_market(m: i16) -> bool {
-    m >= MIN_PERPS_MARKET_INDEX && m <= MAX_PERPS_MARKET_INDEX
+/// `MarketIndex < MinMarketIndex || == NilMarketIndex || > MaxMarketIndex`.
+pub(crate) fn check_market_index(m: i64) -> Result<()> {
+    if m < MIN_MARKET_INDEX || m == NIL_MARKET_INDEX || m > MAX_MARKET_INDEX {
+        Err(Error::InvalidMarketIndex)
+    } else {
+        Ok(())
+    }
 }
 
 /// Serde helper: serialize any byte sequence as Go does for `[]byte` (base64

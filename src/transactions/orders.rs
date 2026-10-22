@@ -44,11 +44,7 @@ impl TxInfo for CreateOrder {
         check_api_key_index(self.api_key_index)?;
 
         let o = &self.order;
-        let spot = is_spot_market(o.market_index);
-        let perps = is_perps_market(o.market_index);
-        if !spot && !perps {
-            return Err(Error::InvalidMarketIndex);
-        }
+        check_market_index(o.market_index)?;
 
         if o.client_order_index != NIL_CLIENT_ORDER_INDEX
             && (o.client_order_index < MIN_CLIENT_ORDER_INDEX
@@ -81,7 +77,7 @@ impl TxInfo for CreateOrder {
             return Err(Error::OrderTimeInForceInvalid);
         }
 
-        if (o.reduce_only != 0 && o.reduce_only != 1) || (spot && o.reduce_only == 1) {
+        if o.reduce_only != 0 && o.reduce_only != 1 {
             return Err(Error::OrderReduceOnlyInvalid);
         }
 
@@ -113,9 +109,7 @@ impl TxInfo for CreateOrder {
                 }
             }
             STOP_LOSS_ORDER | TAKE_PROFIT_ORDER => {
-                if !perps {
-                    return Err(Error::OrderTypeInvalid);
-                } else if o.time_in_force != IMMEDIATE_OR_CANCEL {
+                if o.time_in_force != IMMEDIATE_OR_CANCEL {
                     return Err(Error::OrderTimeInForceInvalid);
                 } else if o.trigger_price == NIL_ORDER_TRIGGER_PRICE {
                     return Err(Error::OrderTriggerPriceInvalid);
@@ -124,9 +118,7 @@ impl TxInfo for CreateOrder {
                 }
             }
             STOP_LOSS_LIMIT_ORDER | TAKE_PROFIT_LIMIT_ORDER => {
-                if !perps {
-                    return Err(Error::OrderTypeInvalid);
-                } else if o.trigger_price == NIL_ORDER_TRIGGER_PRICE {
+                if o.trigger_price == NIL_ORDER_TRIGGER_PRICE {
                     return Err(Error::OrderTriggerPriceInvalid);
                 } else if o.order_expiry == NIL_ORDER_EXPIRY {
                     return Err(Error::OrderExpiryInvalid);
@@ -408,7 +400,7 @@ impl TxInfo for CreateGroupedOrders {
             return Err(Error::OrderGroupSizeInvalid);
         }
         let m0 = self.orders[0].market_index;
-        if m0 < MIN_PERPS_MARKET_INDEX || m0 > MAX_PERPS_MARKET_INDEX {
+        if m0 < MIN_PERPS_MARKET_INDEX || m0 == NIL_MARKET_INDEX || m0 > MAX_MARKET_INDEX {
             return Err(Error::InvalidMarketIndex);
         }
         let mut seen = Vec::new();
@@ -485,7 +477,7 @@ impl TxInfo for CreateGroupedOrders {
 pub struct CancelOrder {
     pub account_index: i64,
     pub api_key_index: u8,
-    pub market_index: i16,
+    pub market_index: i64,
     pub index: i64,
     pub expired_at: i64,
     pub nonce: i64,
@@ -509,9 +501,7 @@ impl TxInfo for CancelOrder {
         check_account_index(self.account_index, MAX_ACCOUNT_INDEX)?;
         check_api_key_index(self.api_key_index)?;
 
-        if !is_spot_market(self.market_index) && !is_perps_market(self.market_index) {
-            return Err(Error::InvalidMarketIndex);
-        }
+        check_market_index(self.market_index)?;
         // Go checks `< MinClientOrderIndex && < MinOrderIndex` and
         // `> MaxClientOrderIndex && > MaxOrderIndex`; since the client-order
         // range is nested inside the order range these reduce to the bounds below.
@@ -600,7 +590,7 @@ impl TxInfo for CancelAllOrders {
             .as_ref()
             .and_then(|a| a.0.get(&ATTRIBUTE_TYPE_CANCEL_ALL_MARKET_INDEX).copied())
         {
-            if self.time_in_force != IMMEDIATE_CANCEL_ALL && m != NIL_MARKET_INDEX as i64 {
+            if self.time_in_force != IMMEDIATE_CANCEL_ALL && m != NIL_MARKET_INDEX {
                 return Err(Error::CancelAllMarketIndexCantBeScheduled);
             }
         }
@@ -662,7 +652,7 @@ impl TxInfo for CancelAllOrders {
 pub struct ModifyOrder {
     pub account_index: i64,
     pub api_key_index: u8,
-    pub market_index: i16,
+    pub market_index: i64,
     pub index: i64,
     pub base_amount: i64,
     pub price: u32,
@@ -689,9 +679,7 @@ impl TxInfo for ModifyOrder {
         check_account_index(self.account_index, MAX_ACCOUNT_INDEX)?;
         check_api_key_index(self.api_key_index)?;
 
-        if !is_spot_market(self.market_index) && !is_perps_market(self.market_index) {
-            return Err(Error::InvalidMarketIndex);
-        }
+        check_market_index(self.market_index)?;
         // See CancelOrder: the nested ranges reduce to these bounds.
         if self.index < MIN_CLIENT_ORDER_INDEX {
             return Err(Error::ClientOrderIndexOutOfRange);

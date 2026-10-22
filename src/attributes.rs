@@ -47,9 +47,9 @@ fn attr_config(typ: u8) -> Option<AttrConfig> {
             err: Error::AttributeValueOutOfRange,
         },
         ATTRIBUTE_TYPE_CANCEL_ALL_MARKET_INDEX => AttrConfig {
-            min: MIN_PERPS_MARKET_INDEX as i64,
-            max: NIL_MARKET_INDEX as i64,
-            nil: NIL_MARKET_INDEX as i64,
+            min: MIN_PERPS_MARKET_INDEX,
+            max: MAX_MARKET_INDEX,
+            nil: NIL_MARKET_INDEX,
             err: Error::AttributeValueOutOfRange,
         },
         ATTRIBUTE_TYPE_SELF_TRADE_BEHAVIOR_MODE => AttrConfig {
@@ -76,7 +76,7 @@ pub struct TxAttributes {
     pub integrator_taker_fee: Option<u32>,
     pub integrator_maker_fee: Option<u32>,
     pub skip_nonce: Option<u8>,
-    pub cancel_all_market_index: Option<i16>,
+    pub cancel_all_market_index: Option<i64>,
     pub self_trade_behavior_mode: Option<u8>,
     pub self_trade_equality_mode: Option<u8>,
 }
@@ -123,7 +123,7 @@ impl TxAttributes {
             m.insert(ATTRIBUTE_TYPE_SKIP_TX_NONCE, v as i64);
         }
         if let Some(v) = self.cancel_all_market_index {
-            m.insert(ATTRIBUTE_TYPE_CANCEL_ALL_MARKET_INDEX, v as i64);
+            m.insert(ATTRIBUTE_TYPE_CANCEL_ALL_MARKET_INDEX, v);
         }
         if let Some(v) = self.self_trade_behavior_mode {
             m.insert(ATTRIBUTE_TYPE_SELF_TRADE_BEHAVIOR_MODE, v as i64);

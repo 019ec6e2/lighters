@@ -37,7 +37,7 @@ fn dummy_sig() -> Vec<u8> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn order(market: i16, coi: i64, base: i64, price: u32, is_ask: u8, ty: u8, tif: u8, ro: u8, trig: u32, exp: i64) -> OrderInfo {
+fn order(market: i64, coi: i64, base: i64, price: u32, is_ask: u8, ty: u8, tif: u8, ro: u8, trig: u32, exp: i64) -> OrderInfo {
     OrderInfo {
         market_index: market,
         client_order_index: coi,
@@ -88,6 +88,89 @@ fn create_order() {
             attributes: None,
         },
     );
+}
+
+/// Binary-options market ids sit outside the legacy perps / spot ranges.
+const BO_MARKET: i64 = 4587;
+
+#[test]
+fn create_order_binary_options() {
+    let v = load();
+    check(
+        &v,
+        "create_order_binary_options",
+        CreateOrder {
+            account_index: ACCOUNT,
+            api_key_index: API_KEY,
+            order: order(BO_MARKET, 1, 50000, 51, 1, 0, 1, 0, 0, 99999999),
+            expired_at: EXPIRED_AT,
+            nonce: NONCE,
+            sig: Vec::new(),
+            signed_hash: String::new(),
+            attributes: None,
+        },
+    );
+}
+
+#[test]
+fn cancel_order_binary_options() {
+    let v = load();
+    check(
+        &v,
+        "cancel_order_binary_options",
+        CancelOrder {
+            account_index: ACCOUNT,
+            api_key_index: API_KEY,
+            market_index: BO_MARKET,
+            index: 12345,
+            expired_at: EXPIRED_AT,
+            nonce: NONCE,
+            sig: Vec::new(),
+            signed_hash: String::new(),
+            attributes: None,
+        },
+    );
+}
+
+#[test]
+fn modify_order_binary_options() {
+    let v = load();
+    check(
+        &v,
+        "modify_order_binary_options",
+        ModifyOrder {
+            account_index: ACCOUNT,
+            api_key_index: API_KEY,
+            market_index: BO_MARKET,
+            index: 12345,
+            base_amount: 60000,
+            price: 52,
+            trigger_price: 0,
+            expired_at: EXPIRED_AT,
+            nonce: NONCE,
+            sig: Vec::new(),
+            signed_hash: String::new(),
+            attributes: None,
+        },
+    );
+}
+
+#[test]
+fn nil_market_index_rejected() {
+    let mut tx = CancelOrder {
+        account_index: ACCOUNT,
+        api_key_index: API_KEY,
+        market_index: 255,
+        index: 12345,
+        expired_at: EXPIRED_AT,
+        nonce: NONCE,
+        sig: Vec::new(),
+        signed_hash: String::new(),
+        attributes: None,
+    };
+    assert!(tx.validate().is_err());
+    tx.market_index = 1 << 48;
+    assert!(tx.validate().is_err());
 }
 
 #[test]
