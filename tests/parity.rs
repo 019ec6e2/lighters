@@ -4,6 +4,8 @@
 
 use std::collections::HashMap;
 
+use lighters as lighter;
+
 use lighter::attributes::{AttributeMap, TxAttributes};
 use lighter::transactions::*;
 use serde::Deserialize;
